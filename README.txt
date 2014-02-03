@@ -3,12 +3,12 @@ Things to do
 ----------------
 Basic(50)
 main thread	:DONE (kinda)
-FG(forground)	:
-BG(background)	:
+FG(forground)	:Min
+BG(background)	:Min
 KILL		:
 STOP		:
-SIGINT		:
-SIGTSTP		:
+SIGINT		:Dan
+SIGTSTP		:Dan
 -----------------
 Advanced(50)
 Piping		:
