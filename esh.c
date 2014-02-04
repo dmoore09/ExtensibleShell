@@ -13,6 +13,7 @@
 
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
+void catch_child(int sig, siginfo_t* info, void* context);
 
 static void
 usage(char *progname)
@@ -70,12 +71,47 @@ struct esh_shell shell =
     .parse_command_line = esh_parse_command_line /* Default parser */
 };
 
+/* catch sigint (^c)  kill a foreground process */
 void catch_sigint(int sig, siginfo_t* info, void* context){
 	printf("caught sigint\n");
 }
 
+/* catch sigtstp (^x)  stop a foreground process */
 void catch_sigtstp(int sig, siginfo_t* info, void* context){
 	printf("caught sigtstp\n");
+}
+
+/* catch sigchld when one or more child processes change state 
+   taken and modified from Signal5 example 
+   TODO need to implement the process list, this method will change
+   the state of process */
+void catch_child(int sig, siginfo_t* info, void* context){
+    
+    /* reap all children and/or report status change */
+    int status;
+    int  pid;
+    while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
+      //process exited
+      if( WIFEXITED(status)) {
+          printf("Received sigal that child process (%d) terminated. \n", pid);
+	  //TODO need to remove process with pid from list
+      }
+      //process stopped
+      if (WIFSTOPPED(status)) { 
+          printf("Received signal that child process (%d) stopped. \n", pid);
+	  //TODO need to set process with pid as stopped
+      }
+      if (WIFCONTINUED(status)) {
+          printf("Received signal that child process (%d) continued. \n", pid);
+	  //TODO need to set process with pid as continued
+      }
+      if( WIFSIGNALED(status)) {
+          printf("Received signal that child process (%d) received signal [%d] \n", 
+                  pid, WTERMSIG(status));
+	  //TODO not sure....
+          done++;
+      }
+    }
 }
 
 int
@@ -84,6 +120,7 @@ main(int ac, char *av[])
     //set handlers for signals
     esh_signal_sethandler(SIGINT, catch_sigint);
     esh_signal_sethandler(SIGTSTP, catch_sigtstp);
+    esh_signal_sethandler(SIGCHLD, catch_child);
 
     int opt;
     list_init(&esh_plugin_list);
