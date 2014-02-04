@@ -7,8 +7,12 @@
 #include <stdio.h>
 #include <readline/readline.h>
 #include <unistd.h>
-
+#include <signal.h>
+#include "esh-sys-utils.h"
 #include "esh.h"
+
+void catch_sigint(int sig, siginfo_t* info, void* context);
+void catch_sigtstp(int sig, siginfo_t* info, void* context);
 
 static void
 usage(char *progname)
@@ -66,9 +70,21 @@ struct esh_shell shell =
     .parse_command_line = esh_parse_command_line /* Default parser */
 };
 
+void catch_sigint(int sig, siginfo_t* info, void* context){
+	printf("caught sigint\n");
+}
+
+void catch_sigtstp(int sig, siginfo_t* info, void* context){
+	printf("caught sigtstp\n");
+}
+
 int
 main(int ac, char *av[])
 {
+    //set handlers for signals
+    esh_signal_sethandler(SIGINT, catch_sigint);
+    esh_signal_sethandler(SIGTSTP, catch_sigtstp);
+
     int opt;
     list_init(&esh_plugin_list);
 
