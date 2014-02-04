@@ -5,7 +5,11 @@
 
 /* Structure that represents a process. id is the proccess id */
 typedef struct Process {
-	int id;
+	//process id
+	int pid;
+	//current state will be used in commands like ps, jobs
+	String state;
+	
 };
 
 /* Structure that represents a process group. It contains a linked
