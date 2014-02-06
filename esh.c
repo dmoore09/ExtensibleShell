@@ -10,10 +10,14 @@
 #include <signal.h>
 #include "esh-sys-utils.h"
 #include "esh.h"
+#include "list.h"
 
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
 void catch_child(int sig, siginfo_t* info, void* context);
+
+//list of processes
+static struct list process_list;
 
 static void
 usage(char *progname)
@@ -121,6 +125,9 @@ main(int ac, char *av[])
     esh_signal_sethandler(SIGINT, catch_sigint);
     esh_signal_sethandler(SIGTSTP, catch_sigtstp);
     esh_signal_sethandler(SIGCHLD, catch_child);
+	
+	//initialize process list
+	list_init (&process_list);
 
     int opt;
     list_init(&esh_plugin_list);
