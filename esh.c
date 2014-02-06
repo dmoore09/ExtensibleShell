@@ -56,6 +56,8 @@ build_prompt_from_plugins(void)
             strcat(prompt, p);
             free(p);
         }
+		//return list pointer to the beginning
+		list_rbegin (&process_list);
     }
 
     /* default prompt */
