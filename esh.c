@@ -15,6 +15,7 @@
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
 void catch_child(int sig, siginfo_t* info, void* context);
+void findPID(*list list, int pid);
 
 //list of processes
 static struct list process_list;
@@ -100,21 +101,25 @@ void catch_child(int sig, siginfo_t* info, void* context){
       //process exited
       if( WIFEXITED(status)) {
           printf("Received sigal that child process (%d) terminated. \n", pid);
-	  //TODO need to remove process with pid from list
+	      //TODO need to remove process with pid from list
+		  findPID(&process_list, int pid);
       }
       //process stopped
       if (WIFSTOPPED(status)) { 
           printf("Received signal that child process (%d) stopped. \n", pid);
-	  //TODO need to set process with pid as stopped
+	      //TODO need to set process with pid as stopped
+		  findPID(&process_list, int pid);
+		  
       }
       if (WIFCONTINUED(status)) {
           printf("Received signal that child process (%d) continued. \n", pid);
-	  //TODO need to set process with pid as continued
+	      //TODO need to set process with pid as continued
+		  findPID(&process_list, int pid);
       }
       if( WIFSIGNALED(status)) {
           printf("Received signal that child process (%d) received signal [%d] \n", 
                   pid, WTERMSIG(status));
-	  //TODO not sure....
+	     //TODO not sure....
           done++;
       }
     }
@@ -173,4 +178,18 @@ main(int ac, char *av[])
         esh_command_line_free(cline);
     }
     return 0;
+}
+
+//This function needs to move the list pointer to the correct entry
+void findPID(*list list, int pid){
+
+for (e = list_begin (list); e != list_end (llist);
+           e = list_next (e))
+        {
+             Process *pro = list_entry (e, Process, elem);
+          	
+	if (pro->pid == pid){
+		//end the function with the list pointing to the right element
+		break;
+        }
 }
