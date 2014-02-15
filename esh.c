@@ -7,15 +7,19 @@
 #include <stdio.h>
 #include <readline/readline.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <signal.h>
 #include "esh-sys-utils.h"
 #include "esh.h"
 #include "list.h"
+#include "processes.h"
+#include <string.h>
 
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
 void catch_child(int sig, siginfo_t* info, void* context);
-void findPID(*list list, int pid);
+void findPID(struct list* plist, int pid);
+void jobs(struct list* pipelineList);
 
 //list of processes
 static struct list process_list;
@@ -102,25 +106,25 @@ void catch_child(int sig, siginfo_t* info, void* context){
       if( WIFEXITED(status)) {
           printf("Received sigal that child process (%d) terminated. \n", pid);
 	      //TODO need to remove process with pid from list
-		  findPID(&process_list, int pid);
+		  findPID(&process_list, pid);
+		  
       }
       //process stopped
       if (WIFSTOPPED(status)) { 
           printf("Received signal that child process (%d) stopped. \n", pid);
 	      //TODO need to set process with pid as stopped
-		  findPID(&process_list, int pid);
+		  findPID(&process_list, pid);
 		  
       }
       if (WIFCONTINUED(status)) {
           printf("Received signal that child process (%d) continued. \n", pid);
 	      //TODO need to set process with pid as continued
-		  findPID(&process_list, int pid);
+		  findPID(&process_list, pid);
       }
       if( WIFSIGNALED(status)) {
           printf("Received signal that child process (%d) received signal [%d] \n", 
                   pid, WTERMSIG(status));
 	     //TODO not sure....
-          done++;
       }
     }
 }
@@ -173,23 +177,88 @@ main(int ac, char *av[])
             esh_command_line_free(cline);
             continue;
         }
+	
+	//look at command determine what needs to be done
+	//get first pipeline
+	struct list_elem* element1 = list_front(&(cline->pipes));
+	struct esh_pipeline *firstPipe = list_entry(element1, struct esh_pipeline, elem);
+	
+	//get the first command
+	struct list_elem* element2 = list_front(&(firstPipe->commands));
+	struct esh_command *firstCommand = list_entry(element2, struct esh_command, elem);
 
+	//get string of first command test
+	if (strcmp(firstCommand->argv[0], "jobs") == 0){
+		printf("jobs initiated\n");
+		//print out all jobs
+	}
+	else if (strcmp(firstCommand->argv[0], "fg") == 0){
+		printf("fg initiated\n");
+	}
+	else if (strcmp(firstCommand->argv[0], "bg") == 0){
+		printf("bg initiated\n");
+	}
+	else if (strcmp(firstCommand->argv[0], "kill") == 0){
+		printf("kill initiated\n");
+	}
+	else if (strcmp(firstCommand->argv[0], "stop") == 0){
+		printf("stop initiated\n");
+	}
+	else if(strcmp(firstCommand->argv[0], "logout") == 0){
+		printf("logging out of shell\n");
+		return 0;
+	}
+	//user wants to start a program
+	else{	
+		printf("user wants to start a program\n");
+	}
+	
         esh_command_line_print(cline);
         esh_command_line_free(cline);
     }
     return 0;
 }
 
-//This function needs to move the list pointer to the correct entry
-void findPID(*list list, int pid){
+/* our version of the jobs command
+   goes through list of available pipelines and prints them out */
+void jobs(struct list* pipelineList){
+	//numerical counter for jobs
+	int jobNum = 1;
+	for (e = list_begin (list); e != list_end (list); e = list_next (e))
+        {
+	     //get current pipeline
+             struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
+             
+	     //print out pipeline data
+	     printf("[%d]", jobNum);
+	    
+	     if (*pipe->job_status == STOPPED || *pipe->job_status == NEEDSTERMINAL){
+		printf("Stopped		");
+	     }
+	     else{
+		printf("Running		");
+	     }
+	     
+	     //get command name
+	     struct list_elem* element = list_front(&(firstPipe->commands));
+	     struct esh_command *firstCommand = list_entry(element2, struct esh_command, elem);
+	     printf("%s\n", firstCommand->argv[0]);
+	}
+}
 
-for (e = list_begin (list); e != list_end (llist);
+//This function needs to move the list pointer to the correct entry
+void findPID(struct list* list, int pid){
+
+struct list_elem *e;
+
+for (e = list_begin (list); e != list_end (list);
            e = list_next (e))
         {
-             Process *pro = list_entry (e, Process, elem);
+             struct Process *pro = list_entry (e, struct Process, elem);
           	
-	if (pro->pid == pid){
-		//end the function with the list pointing to the right element
-		break;
-        }
+		if (pro->pid == pid){
+			//end the function with the list pointing to the right element
+			break;
+        	}
+	}
 }
