@@ -14,6 +14,7 @@
 #include "list.h"
 #include "processes.h"
 #include <string.h>
+#include <unistd.h>
 
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
@@ -255,16 +256,23 @@ main(int ac, char *av[])
 		 //you are in the child
 		int pid = fork();
                 if(pid == 0){
+			//TODO check for basic bash commands
                         int ret = 0;
                         char* path = (char*)malloc(sizeof(char)*100);
-                        strcat(path,"/bin/");
-                        strcat(path,firstCommand->argv[0]);
+			getcwd(path, 100);
+                        //strcat(path, av[0]);
+                        strcat(path,"/");
+			strcat(path,firstCommand->argv[0]);
+			printf("%s\n", path);
                         ret = execv(path,firstCommand->argv);
-                        if(ret!=0){
-                                printf("Execution failed");
+                        if(ret!=0){     
+			  printf("Execution failed\n");
+			  exit(0);
                         }
+		}
 		//in the parent
 		else {
+			printf("child pid: %d\n", pid);
 			//initialize a process
 			struct Process newProcess;
 			newProcess.state = 0;
@@ -272,12 +280,12 @@ main(int ac, char *av[])
 			//TODO process group??
 			//TODO initialize with constructors
 			list_push_back(&process_list, &newProcess.elem);
-			printf("job added");
+			printf("job added\n");
 		}
-                }
+                
 	}
 	
-        esh_command_line_print(cline);
+        //esh_command_line_print(cline);
         esh_command_line_free(cline);
     }
     return 0;
@@ -331,6 +339,9 @@ void killProcess(struct list* processList, int pid){
 	struct list_elem *e = findPID(processList, pid);
 	if (e){
 		list_remove(e);
+	}
+	else{
+		printf("Unable to find process:%d to kill", pid);
 	}
 	
 	//send a SIGKILL to child process with pid
