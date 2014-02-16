@@ -15,6 +15,7 @@
 #include "processes.h"
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
@@ -23,7 +24,9 @@ struct list_elem* findPID(struct list* plist, int pid);
 /* executes jobs command */
 void jobs(struct list* pipelineList);
 /* executes kill command */
-void killProcess(struct list* processList, int pid);
+void killProcess(int pid);
+/* exectues the stop command */
+void stopProcess(int pid);
 
 //list of processes
 static struct list process_list;
@@ -107,8 +110,10 @@ void catch_sigtstp(int sig, siginfo_t* info, void* context){
 	while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
 		//get process with the right pid and change the state
 		struct list_elem *e = findPID(&process_list, pid);
-		struct Process *pro = list_entry (e, struct Process, elem);
-		pro->state = 1;
+		if (e){
+			struct Process *pro = list_entry (e, struct Process, elem);
+			pro->state = 1;
+		}
 	}
 	
 }
@@ -241,9 +246,12 @@ main(int ac, char *av[])
 	}
 	else if (strcmp(firstCommand->argv[0], "kill") == 0){
 		printf("kill initiated\n");
-		//kill(&process_list, firstCommand->argv[1])
+		int killPid = atoi(firstCommand->argv[1]);
+		killProcess(killPid);
 	}
 	else if (strcmp(firstCommand->argv[0], "stop") == 0){
+		int stopPid = atoi(firstCommand->argv[1]);
+		stopProcess(stopPid);
 		printf("stop initiated\n");
 	}
 	else if(strcmp(firstCommand->argv[0], "logout") == 0){
@@ -275,12 +283,12 @@ main(int ac, char *av[])
 			printf("child pid: %d\n", pid);
 			//initialize a process
 			struct Process newProcess;
-			newProcess.state = 0;
-			newProcess.pid = pid;
+			process_init(&newProcess, firstCommand->argv[0], pid, 0, 0);
 			//TODO process group??
-			//TODO initialize with constructors
-			list_push_back(&process_list, &newProcess.elem);
+			list_push_back(&process_list, &(newProcess.elem));
 			printf("job added\n");
+			int status;
+			waitpid(pid, &status, 0);
 		}
                 
 	}
@@ -313,7 +321,7 @@ void jobs(struct list* processList){
 	     }
 	     
 	     //TODO add name member get command name
-	     //printf("%s\n", firstCommand->name);
+	     printf("%s\n", pro->name);
 	}
 }
 
@@ -327,6 +335,7 @@ struct list_elem* findPID(struct list* list, int pid){
         {	
             	 struct Process *pro = list_entry (e, struct Process, elem);
 	    	 if (pro->pid == pid){
+			printf("Found process with: %d\n", pid);
 			return e;
 	     	}  
 	}
@@ -334,16 +343,11 @@ struct list_elem* findPID(struct list* list, int pid){
 }
 
 /* execute the kill command */
-void killProcess(struct list* processList, int pid){
-	//remove process from process list
-	struct list_elem *e = findPID(processList, pid);
-	if (e){
-		list_remove(e);
-	}
-	else{
-		printf("Unable to find process:%d to kill", pid);
-	}
-	
+void killProcess(int pid){
 	//send a SIGKILL to child process with pid
 	kill(pid, SIGINT);
+}
+
+void stopProcess(int pid){
+	kill (pid, SIGSTOP);
 }
