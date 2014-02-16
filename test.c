@@ -3,8 +3,6 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <string.h>
-#include "list.h"
-#include "processes.h"
 
 int main(int argc, char* argv[]){
 //     int i;
@@ -12,8 +10,6 @@ int main(int argc, char* argv[]){
 	for(int i = 1; i < argc; i++){
 		fprintf(stderr,"arg%d: %s\n",i,argv[i]);
 	}
-	list* plist;
-	list_init(plist);
 	char* dir = (char*)malloc(sizeof(char)*100);
 	char* cmd = (char*)malloc(sizeof(char)*20);
 //        if(fork()==0){
@@ -26,6 +22,26 @@ int main(int argc, char* argv[]){
                         printf("Execution failed");
                 }
 //        }
+
+	//adds bin commands to check
+	int cmdsize = 0;
+	char** cmds = (char**)malloc(sizeof(char*)*100);	
+	int i = 0;
+	for(i=0;i<100;i++){
+		cmds[i] = (char*)malloc(sizeof(char)*10);
+	}
+	strcpy(cmds[0],"ls");
+	cmdsize = 1;
+
+	//checks commands
+	int j = 0;
+	for(j = 0;j < cmdsize;j++){
+		if(strcmp(cmds[j],argv[0])){
+			fprintf(stderr,"This is a basic command");
+			//call execvp
+		}
+	}
+
 	
 /**
 	strcat(dir,"/bin/");
