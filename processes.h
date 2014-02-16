@@ -7,6 +7,7 @@
  struct Process {
 	//process id
 	int pid;
+	int pgid;
 	//current state will be used in commands like ps, jobs
 	// 0 running fg
 	// 1 stopped fg
