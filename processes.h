@@ -24,4 +24,4 @@ struct Process {
 
 /* Structure that represents a process group. It contains a linked
    list groups that contains all processes in the group*/
-void process_init(char* pname, int ppid, int ppgid, int pstate);
+void process_init(struct Process* p, char* pname, int ppid, int ppgid, int pstate);
