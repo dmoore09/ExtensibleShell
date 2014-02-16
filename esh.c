@@ -18,11 +18,11 @@
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
 void catch_child(int sig, siginfo_t* info, void* context);
-list_elem* findPID(struct list* plist, int pid);
+struct list_elem* findPID(struct list* plist, int pid);
 /* executes jobs command */
 void jobs(struct list* pipelineList);
 /* executes kill command */
-void kill(struct list* pipelineList, int pid);
+void killProcess(struct list* processList, int pid);
 
 //list of processes
 static struct list process_list;
@@ -105,7 +105,7 @@ void catch_sigtstp(int sig, siginfo_t* info, void* context){
         int  pid;
 	while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
 		//get process with the right pid and change the state
-		struct list_elem *e = findPid(&process_list, pid);
+		struct list_elem *e = findPID(&process_list, pid);
 		struct Process *pro = list_entry (e, struct Process, elem);
 		pro->state = 1;
 	}
@@ -133,7 +133,7 @@ void catch_child(int sig, siginfo_t* info, void* context){
 		list_remove(e);
 	   }
 	   else{
-		printf("ERROR: could not find child on list EXITED")
+		printf("ERROR: could not find child on list EXITED");
 	   }	
       }
       //process stopped
@@ -145,7 +145,7 @@ void catch_child(int sig, siginfo_t* info, void* context){
 		pro->state = 1;
 	   }
 	   else{
-		printf("ERROR: could not find child on list STOPPED")
+		printf("ERROR: could not find child on list STOPPED");
 	   }		  
       }
       if (WIFCONTINUED(status)) {
@@ -156,7 +156,7 @@ void catch_child(int sig, siginfo_t* info, void* context){
 		pro->state = 0;
 	   }
 	   else{
-		printf("ERROR: could not find child on list CONTINUED")
+		printf("ERROR: could not find child on list CONTINUED");
 	   }	
 		  
       }
@@ -240,7 +240,7 @@ main(int ac, char *av[])
 	}
 	else if (strcmp(firstCommand->argv[0], "kill") == 0){
 		printf("kill initiated\n");
-		kill(&process_list, firstCommand->argv[1])
+		//kill(&process_list, firstCommand->argv[1])
 	}
 	else if (strcmp(firstCommand->argv[0], "stop") == 0){
 		printf("stop initiated\n");
@@ -267,11 +267,12 @@ main(int ac, char *av[])
 		else {
 			//initialize a process
 			struct Process newProcess;
-			newProcess->state = 0;
-			newProcess->pid = pid;
+			newProcess.state = 0;
+			newProcess.pid = pid;
 			//TODO process group??
 			//TODO initialize with constructors
-			list_push_back(&process_list, newProcess->elem)
+			list_push_back(&process_list, &newProcess.elem);
+			printf("job added");
 		}
                 }
 	}
@@ -287,7 +288,8 @@ main(int ac, char *av[])
 void jobs(struct list* processList){
 	//numerical counter for jobs
 	int jobNum = 1;
-	for (e = list_begin (list); e != list_end (list); e = list_next (e))
+	struct list_elem *e;
+	for (e = list_begin (processList); e != list_end (processList); e = list_next (e))
         {
 	     //get current pipeline
              struct Process *pro = list_entry (e, struct Process, elem);
@@ -295,7 +297,7 @@ void jobs(struct list* processList){
 	     //print out pipeline data
 	     printf("[%d]", jobNum);
 	    
-	     if (*pro->state == 1 || *pro->state == 3){
+	     if (pro->state == 1 || pro->state == 3){
 		printf("Stopped		");
 	     }
 	     else{
@@ -308,7 +310,7 @@ void jobs(struct list* processList){
 }
 
 /* finds correct list element and returns it */
-list_elem* findPID(struct list* list, int pid){
+struct list_elem* findPID(struct list* list, int pid){
 
 	struct list_elem *e;
 
@@ -324,7 +326,7 @@ list_elem* findPID(struct list* list, int pid){
 }
 
 /* execute the kill command */
-void kill(struct list* processList, int pid){
+void killProcess(struct list* processList, int pid){
 	//remove process from process list
 	struct list_elem *e = findPID(processList, pid);
 	if (e){
