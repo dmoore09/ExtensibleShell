@@ -187,6 +187,15 @@ main(int ac, char *av[])
 
     int opt;
     list_init(&esh_plugin_list);
+    //Sets up the commands
+    int cmdsize = 0;
+    char** cmds = (char**)malloc(sizeof(char*)*100);
+    int i = 0;
+    for(i=0;i<100;i++){
+            cmds[i] = (char*)malloc(sizeof(char)*10);
+    }
+    strcpy(cmds[0],"ls");
+    cmdsize = 1;
 
     /* Process command-line arguments. See getopt(3) */
     while ((opt = getopt(ac, av, "hp:")) > 0) {
@@ -265,6 +274,14 @@ main(int ac, char *av[])
 		int pid = fork();
                 if(pid == 0){
 			//TODO check for basic bash commands
+		        int j = 0;
+   		        for(j = 0;j < cmdsize;j++){
+                       	   if(strcmp(cmds[j],argv[0])){
+                       	    fprintf(stderr,"This is a basic command");
+			       execvp(argv[0];
+                	    }
+        		}
+
                         int ret = 0;
                         char* path = (char*)malloc(sizeof(char)*100);
 			getcwd(path, 100);
