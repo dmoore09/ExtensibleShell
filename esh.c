@@ -19,7 +19,10 @@ void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
 void catch_child(int sig, siginfo_t* info, void* context);
 void findPID(struct list* plist, int pid);
+/* executes jobs command */
 void jobs(struct list* pipelineList);
+/* executes kill command */
+void kill(struct list* pipelineList, int pid);
 
 //list of processes
 static struct list process_list;
@@ -85,11 +88,31 @@ struct esh_shell shell =
 /* catch sigint (^c)  kill a foreground process */
 void catch_sigint(int sig, siginfo_t* info, void* context){
 	printf("caught sigint\n");
+	//change the state of correct child in pipline list
+	struct list *pipeline = shell.get_jobs();
+	
+	int status;
+        int  pid;
+	while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
+		//get process with the right pid
+		struct esh_command *cmd = shell.get_cmd_from_pid(pid);
+		//remove job from list?	
+	}
 }
 
-/* catch sigtstp (^x)  stop a foreground process */
+/* catch sigtstp (^Z)  stop a foreground process */
 void catch_sigtstp(int sig, siginfo_t* info, void* context){
 	printf("caught sigtstp\n");
+	struct list *pipeline = shell.get_jobs();
+	
+	int status;
+        int  pid;
+	while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
+		//get process with the right pid
+		struct esh_command *cmd = shell.get_cmd_from_pid(pid);
+		cmd->pipeline->status == STOPPED;	
+	}
+	
 }
 
 /* catch sigchld when one or more child processes change state 
@@ -106,15 +129,13 @@ void catch_child(int sig, siginfo_t* info, void* context){
       if( WIFEXITED(status)) {
           printf("Received sigal that child process (%d) terminated. \n", pid);
 	      //TODO need to remove process with pid from list
-		  findPID(&process_list, pid);
-		  
+		  findPID(&process_list, pid);	  
       }
       //process stopped
       if (WIFSTOPPED(status)) { 
           printf("Received signal that child process (%d) stopped. \n", pid);
 	      //TODO need to set process with pid as stopped
-		  findPID(&process_list, pid);
-		  
+		  findPID(&process_list, pid);	  
       }
       if (WIFCONTINUED(status)) {
           printf("Received signal that child process (%d) continued. \n", pid);
@@ -211,6 +232,17 @@ main(int ac, char *av[])
 	//user wants to start a program
 	else{	
 		printf("user wants to start a program\n");
+		 //you are in the child
+                if(fork()==0){
+                        int ret = 0;
+                        char* path = (char*)malloc(sizeof(char)*100);
+                        strcat(path,"/bin/");
+                        strcat(path,firstCommand->argv[0]);
+                        ret = execv(path,firstCommand->argv);
+                        if(ret!=0){
+                                printf("Execution failed");
+                        }
+                }
 	}
 	
         esh_command_line_print(cline);
@@ -254,11 +286,11 @@ struct list_elem *e;
 for (e = list_begin (list); e != list_end (list);
            e = list_next (e))
         {
-             struct Process *pro = list_entry (e, struct Process, elem);
-          	
-		if (pro->pid == pid){
-			//end the function with the list pointing to the right element
-			break;
-        	}
+             struct pipeline *pro = list_entry (e, struct Process, elem);
 	}
+}
+
+/* execute the kill command */
+void kill(struct list* pipelineList, int pid){
+	//send a SIGKILL to child process with pid
 }
