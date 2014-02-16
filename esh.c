@@ -18,7 +18,7 @@
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
 void catch_child(int sig, siginfo_t* info, void* context);
-void findPID(struct list* plist, int pid);
+list_elem* findPID(struct list* plist, int pid);
 /* executes jobs command */
 void jobs(struct list* pipelineList);
 /* executes kill command */
@@ -87,30 +87,27 @@ struct esh_shell shell =
 
 /* catch sigint (^c)  kill a foreground process */
 void catch_sigint(int sig, siginfo_t* info, void* context){
-	printf("caught sigint\n");
-	//change the state of correct child in pipline list
-	struct list *pipeline = shell.get_jobs();
-	
+	printf("caught sigint\n");	
 	int status;
         int  pid;
 	while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
-		//get process with the right pid
-		struct esh_command *cmd = shell.get_cmd_from_pid(pid);
-		//remove job from list?	
+		//get process with the right pid and remove from process list
+		struct list_elem *e = findPID(&process_list, pid);
+		if (e){
+			list_remove(e);
+		}	
 	}
 }
 
 /* catch sigtstp (^Z)  stop a foreground process */
 void catch_sigtstp(int sig, siginfo_t* info, void* context){
-	printf("caught sigtstp\n");
-	struct list *pipeline = shell.get_jobs();
-	
 	int status;
         int  pid;
 	while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
-		//get process with the right pid
-		struct esh_command *cmd = shell.get_cmd_from_pid(pid);
-		cmd->pipeline->status == STOPPED;	
+		//get process with the right pid and change the state
+		struct list_elem *e = findPid(&process_list, pid);
+		struct Process *pro = list_entry (e, struct Process, elem);
+		pro->state = 1;
 	}
 	
 }
@@ -242,6 +239,10 @@ main(int ac, char *av[])
                         if(ret!=0){
                                 printf("Execution failed");
                         }
+		//in the parent
+		else {
+			
+		}
                 }
 	}
 	
@@ -253,18 +254,18 @@ main(int ac, char *av[])
 
 /* our version of the jobs command
    goes through list of available pipelines and prints them out */
-void jobs(struct list* pipelineList){
+void jobs(struct list* processList){
 	//numerical counter for jobs
 	int jobNum = 1;
 	for (e = list_begin (list); e != list_end (list); e = list_next (e))
         {
 	     //get current pipeline
-             struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
+             struct Process *pro = list_entry (e, struct Process, elem);
              
 	     //print out pipeline data
 	     printf("[%d]", jobNum);
 	    
-	     if (*pipe->job_status == STOPPED || *pipe->job_status == NEEDSTERMINAL){
+	     if (*pro->state == 1 || *pro->state == 3){
 		printf("Stopped		");
 	     }
 	     else{
@@ -272,25 +273,34 @@ void jobs(struct list* pipelineList){
 	     }
 	     
 	     //get command name
-	     struct list_elem* element = list_front(&(firstPipe->commands));
-	     struct esh_command *firstCommand = list_entry(element2, struct esh_command, elem);
-	     printf("%s\n", firstCommand->argv[0]);
+	     printf("%s\n", firstCommand->name);
 	}
 }
 
-//This function needs to move the list pointer to the correct entry
-void findPID(struct list* list, int pid){
+/* finds correct list element and returns it */
+list_elem* findPID(struct list* list, int pid){
 
-struct list_elem *e;
+	struct list_elem *e;
 
-for (e = list_begin (list); e != list_end (list);
-           e = list_next (e))
-        {
-             struct pipeline *pro = list_entry (e, struct Process, elem);
+	for (e = list_begin (list); e != list_end (list);
+         	  e = list_next (e))
+        {	
+            	 struct Process *pro = list_entry (e, struct Process, elem);
+	    	 if (pro->pid == pid){
+			return e;
+	     	}  
 	}
+	return NULL;
 }
 
 /* execute the kill command */
-void kill(struct list* pipelineList, int pid){
+void kill(struct list* processList, int pid){
+	//remove process from process list
+	struct list_elem *e = findPID(processList, pid);
+	if (e){
+		list_remove(e);
+	}
+	
 	//send a SIGKILL to child process with pid
+	
 }
