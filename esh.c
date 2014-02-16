@@ -113,36 +113,57 @@ void catch_sigtstp(int sig, siginfo_t* info, void* context){
 }
 
 /* catch sigchld when one or more child processes change state 
-   taken and modified from Signal5 example 
-   TODO need to implement the process list, this method will change
-   the state of process */
+   taken and modified from Signal5 example */
 void catch_child(int sig, siginfo_t* info, void* context){
     
     /* reap all children and/or report status change */
     int status;
     int  pid;
     while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
+	
+	//get process
+	struct list_elem *e = findPID(&process_list, pid);
+	
+
       //process exited
       if( WIFEXITED(status)) {
           printf("Received sigal that child process (%d) terminated. \n", pid);
-	      //TODO need to remove process with pid from list
-		  findPID(&process_list, pid);	  
+	  //remove process with pid from list
+	  if (e){
+		list_remove(e);
+	   }
+	   else{
+		printf("ERROR: could not find child on list EXITED")
+	   }	
       }
       //process stopped
       if (WIFSTOPPED(status)) { 
           printf("Received signal that child process (%d) stopped. \n", pid);
-	      //TODO need to set process with pid as stopped
-		  findPID(&process_list, pid);	  
+	   //set process with pid as stopped
+	   if (e){
+		struct Process *pro = list_entry (e, struct Process, elem);
+		pro->state = 1;
+	   }
+	   else{
+		printf("ERROR: could not find child on list STOPPED")
+	   }		  
       }
       if (WIFCONTINUED(status)) {
           printf("Received signal that child process (%d) continued. \n", pid);
-	      //TODO need to set process with pid as continued
-		  findPID(&process_list, pid);
+	   // need to set process with pid as continued
+	   if (e){
+		struct Process *pro = list_entry (e, struct Process, elem);
+		pro->state = 0;
+	   }
+	   else{
+		printf("ERROR: could not find child on list CONTINUED")
+	   }	
+		  
       }
       if( WIFSIGNALED(status)) {
           printf("Received signal that child process (%d) received signal [%d] \n", 
                   pid, WTERMSIG(status));
-	     //TODO not sure....
+	  //TODO dont know...
       }
     }
 }
@@ -209,6 +230,7 @@ main(int ac, char *av[])
 	if (strcmp(firstCommand->argv[0], "jobs") == 0){
 		printf("jobs initiated\n");
 		//print out all jobs
+		jobs(&process_list);
 	}
 	else if (strcmp(firstCommand->argv[0], "fg") == 0){
 		printf("fg initiated\n");
@@ -218,6 +240,7 @@ main(int ac, char *av[])
 	}
 	else if (strcmp(firstCommand->argv[0], "kill") == 0){
 		printf("kill initiated\n");
+		kill(&process_list, firstCommand->argv[1])
 	}
 	else if (strcmp(firstCommand->argv[0], "stop") == 0){
 		printf("stop initiated\n");
@@ -230,7 +253,8 @@ main(int ac, char *av[])
 	else{	
 		printf("user wants to start a program\n");
 		 //you are in the child
-                if(fork()==0){
+		int pid = fork();
+                if(pid == 0){
                         int ret = 0;
                         char* path = (char*)malloc(sizeof(char)*100);
                         strcat(path,"/bin/");
@@ -241,7 +265,13 @@ main(int ac, char *av[])
                         }
 		//in the parent
 		else {
-			
+			//initialize a process
+			struct Process newProcess;
+			newProcess->state = 0;
+			newProcess->pid = pid;
+			//TODO process group??
+			//TODO initialize with constructors
+			list_push_back(&process_list, newProcess->elem)
 		}
                 }
 	}
@@ -272,8 +302,8 @@ void jobs(struct list* processList){
 		printf("Running		");
 	     }
 	     
-	     //get command name
-	     printf("%s\n", firstCommand->name);
+	     //TODO add name member get command name
+	     //printf("%s\n", firstCommand->name);
 	}
 }
 
@@ -302,5 +332,5 @@ void kill(struct list* processList, int pid){
 	}
 	
 	//send a SIGKILL to child process with pid
-	
+	kill(pid, SIGINT);
 }
