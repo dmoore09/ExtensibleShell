@@ -208,7 +208,8 @@ main(int ac, char *av[])
             cmds[i] = (char*)malloc(sizeof(char)*10);
     }
     strcpy(cmds[0],"ls");
-    cmdsize = 1;
+    strcpy(cmds[1],"cd");
+    cmdsize = 2;
 
     /* Process command-line arguments. See getopt(3) */
     while ((opt = getopt(ac, av, "hp:")) > 0) {
@@ -287,13 +288,13 @@ main(int ac, char *av[])
 		int pid = fork();
                 if(pid == 0){
 			
-		        //int j = 0;
-   		        //for(j = 0;j < cmdsize;j++){
-                       	 // if(strcmp(cmds[j],firstCommand->argv[0]) == 0){
-                       	 //   fprintf(stderr,"This is a basic command");
-			//       execvp(firstCommand->argv[0], firstCommand->argv);
-                	//    }
-        		//}
+		        int j = 0;
+   		        for(j = 0;j < cmdsize;j++){
+                       		if(strcmp(cmds[j],firstCommand->argv[0]) == 0){
+                       			fprintf(stderr,"This is a basic command");
+					execvp(firstCommand->argv[0], firstCommand->argv);
+                		}
+        		}
 			
 				
 			//make process leader of its own process group
