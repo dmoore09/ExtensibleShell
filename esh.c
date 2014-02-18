@@ -216,136 +216,149 @@ main(int ac, char *av[])
 	struct list_elem* element1 = list_front(&(cline->pipes));
 	struct esh_pipeline *pipe = list_entry(element1, struct esh_pipeline, elem);
 	
-	//TODO loop for all commands in pipeline
-	//get the first command
-	struct list_elem* element2 = list_front(&(pipe->commands));
-	struct esh_command *firstCommand = list_entry(element2, struct esh_command, elem);
-
-	//get string of first command test
-	if (strcmp(firstCommand->argv[0], "jobs") == 0){
-		//print out all jobs
-		jobs(&jobs_list);
-	}
-	else if (strcmp(firstCommand->argv[0], "fg") == 0){
-		int fgJID = atoi(firstCommand->argv[1]);
-		struct esh_pipeline* fgJob = findJID(fgJID);
-		
-		if (fgJob){
-			
-			//if job is in stopped send it SIGCONT
-			if (fgJob->status == STOPPED){
-				kill(fgJob->pgrp, SIGCONT);
-			}
-			fgJob->status = FOREGROUND;
-			
-						
-
-			give_terminal_to(fgJob->pgrp, shell_state);
-	
-			//give fg status and wait
-			int status;
-			int pidT;
-			if((pidT = waitpid(-1, &status, WUNTRACED)) > -1){		
-				give_terminal_to(getpgrp(), shell_state);
-				updateStatus(pidT, status);	
-			}		
+	struct list_elem* e;
+	bool start = true;
+	//loop through all commands in pipeline
+	//TODO ?? SHOULD WE ALL BASIC COMMANDS TO BE PIPED??
+	for (e = list_begin (&(pipe->commands)); e != list_end (&(pipe->commands)); e = list_next (e)){		
+		//get the first command
+		struct esh_command *firstCommand = list_entry(e, struct esh_command, elem);
+		//get string of first command test
+		if (strcmp(firstCommand->argv[0], "jobs") == 0){
+			//print out all jobs
+			jobs(&jobs_list);
 		}
-	}
-	else if (strcmp(firstCommand->argv[0], "bg") == 0){
-		int bgJID = atoi(firstCommand->argv[1]);
-		struct esh_pipeline* bgJob = findJID(bgJID);
-		kill(bgJob->pgrp, SIGCONT);
-
-		
-	}
-	//TODO Does not work when a fg job is stopped
-	else if (strcmp(firstCommand->argv[0], "kill") == 0){
-		int killPid = atoi(firstCommand->argv[1]);
-		killProcess(killPid);
-	}
-	else if (strcmp(firstCommand->argv[0], "stop") == 0){
-		//TODO save terminal State! FAQ #12
-		int stopPid = atoi(firstCommand->argv[1]);
-		stopProcess(stopPid);
-	}
-	else if(strcmp(firstCommand->argv[0], "logout") == 0){
-		printf("logging out of shell\n");
-		return 0;
-	}
-	//user wants to start a program
-	else{	
-		printf("user wants to start a program\n");
-		 //you are in the child
-		int pid = fork();
-                if(pid == 0){
-			
-		        int j = 0;
-   		        for(j = 0;j < cmdsize;j++){
-                       		if(strcmp(cmds[j],firstCommand->argv[0]) == 0){
-                       			fprintf(stderr,"This is a basic command");
-					execvp(firstCommand->argv[0], firstCommand->argv);
-                		}
-        		}
-			
-			
-				
-			//make process leader of its own process group
-			setpgid(pid, pid);
-
-                        int ret = 0;
-                        char* path = (char*)malloc(sizeof(char)*100);
-			getcwd(path, 100);
-                        strcat(path,"/");
-			strcat(path,firstCommand->argv[0]);
-
-                        ret = execv(path,firstCommand->argv);	
-                        if(ret!=0){     
-			  printf("Execution failed\n");
-			  exit(0);
-                        }
-		}
-		//in the parent
-		else {
-			
-			//initialize child process pid
-			printf("child pid: %d\n", pid);			
-			firstCommand->pid = pid;
-
-			//double check, set child into process group 
-			//TODO first process in pipe olny!!!
-			setpgid(pid, pid);
-
-			//add new job to jobs list
-			//TODO make sure pgrp is the first process and not reset
-			if (!pipe->bg_job){	
-				initializeJob(pipe, pid, FOREGROUND);
-			}
-			else{
-				initializeJob(pipe, pid, BACKGROUND);
-			}
-			list_remove(&(pipe->elem));
-			
-			//block signal when adding
-			esh_signal_block(SIGCHLD);
-			list_push_back(&jobs_list, &(pipe->elem));
-			esh_signal_unblock(SIGCHLD);
-
-			if (!pipe->bg_job){
-				give_terminal_to(pid, shell_state);
+		else if (strcmp(firstCommand->argv[0], "fg") == 0){
+			int fgJID = atoi(firstCommand->argv[1]);
+			struct esh_pipeline* fgJob = findJID(fgJID);
 	
-				//wait for new child to finish TODO only if foreground
+			if (fgJob){
+		
+				//if job is in stopped send it SIGCONT
+				if (fgJob->status == STOPPED){
+					kill(fgJob->pgrp, SIGCONT);
+				}
+				fgJob->status = FOREGROUND;
+		
+					
+
+				give_terminal_to(fgJob->pgrp, shell_state);
+
+				//give fg status and wait
 				int status;
 				int pidT;
 				if((pidT = waitpid(-1, &status, WUNTRACED)) > -1){		
 					give_terminal_to(getpgrp(), shell_state);
 					updateStatus(pidT, status);	
-				}	
+				}		
 			}
 		}
-                
+		else if (strcmp(firstCommand->argv[0], "bg") == 0){
+			int bgJID = atoi(firstCommand->argv[1]);
+			struct esh_pipeline* bgJob = findJID(bgJID);
+			kill(bgJob->pgrp, SIGCONT);
+		}
+		//TODO Does not work when a fg job is stopped
+		else if (strcmp(firstCommand->argv[0], "kill") == 0){
+			int killPid = atoi(firstCommand->argv[1]);
+			killProcess(killPid);
+		}
+		else if (strcmp(firstCommand->argv[0], "stop") == 0){
+			//TODO save terminal State! FAQ #12
+			int stopPid = atoi(firstCommand->argv[1]);
+			stopProcess(stopPid);
+		}
+		else if(strcmp(firstCommand->argv[0], "logout") == 0){
+			printf("logging out of shell\n");
+			return 0;
+		}
+		//user wants to start a program
+		else{	
+			printf("user wants to start a program\n");
+			 //you are in the child
+			int pid = fork();
+			if(pid == 0){
+				
+				int j = 0;
+				for(j = 0;j < cmdsize;j++){
+			       		if(strcmp(cmds[j],firstCommand->argv[0]) == 0){
+			       			fprintf(stderr,"This is a basic command");
+						execvp(firstCommand->argv[0], firstCommand->argv);
+					}
+				}
+		
+				if (start){
+					//make process leader of its own process group
+					start = false;
+					setpgid(pid, pid);
+				}
+				else{
+					//add to process group
+					setpgid(pid, pipe->pgrp);
+				}
+			
+
+
+				int ret = 0;
+				char* path = (char*)malloc(sizeof(char)*100);
+				getcwd(path, 100);
+				strcat(path,"/");
+				strcat(path,firstCommand->argv[0]);
+
+				ret = execv(path,firstCommand->argv);	
+				if(ret!=0){     
+				  printf("Execution failed\n");
+				  exit(0);
+				}
+			}
+			//in the parent
+			else {
+		
+				//add new job to jobs list
+				//TODO make sure pgrp is the first process and not reset
+				if (!pipe->bg_job && start){
+					start = false;	
+					initializeJob(pipe, pid, FOREGROUND);
+				}
+				else if (start){
+					start = false;
+					initializeJob(pipe, pid, BACKGROUND);
+				}
+				list_remove(&(pipe->elem));
+
+				//initialize child process pid
+				printf("child pid: %d\n", pid);			
+				firstCommand->pid = pid;
+
+				//double check, set child into process group 
+				//TODO first process in pipe olny!!!
+				setpgid(pid, pipe->pgrp);
+
+				
+		
+				//block signal when adding
+				esh_signal_block(SIGCHLD);
+				list_push_back(&jobs_list, &(pipe->elem));
+				esh_signal_unblock(SIGCHLD);
+
+				if (!pipe->bg_job){
+					give_terminal_to(pid, shell_state);
+
+					//wait for new child to finish TODO only if foreground
+					int status;
+					int pidT;
+					if((pidT = waitpid(-1, &status, WUNTRACED)) > -1){		
+						give_terminal_to(getpgrp(), shell_state);
+						updateStatus(pidT, status);	
+					}	
+				}
+			}
+		
+		}
 	}
+
+		esh_command_line_free(cline);
 	
-        esh_command_line_free(cline);
     }
     return 0;
 }
