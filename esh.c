@@ -36,6 +36,8 @@ void initializeJob(struct esh_pipeline* job, int pgrp, enum job_status status);
 
 //list of processes
 static struct list jobs_list;
+//shell state used to restore state
+struct termios *shell_state;
 
 static void
 usage(char *progname)
@@ -193,6 +195,8 @@ main(int ac, char *av[])
 	
 	//initialize process list
 	list_init (&jobs_list);
+    //back up shell state
+    shell_state = esh_sys_tty_init();
 
     int opt;
     list_init(&esh_plugin_list);
@@ -300,7 +304,6 @@ main(int ac, char *av[])
 			getcwd(path, 100);
                         strcat(path,"/");
 			strcat(path,firstCommand->argv[0]);
-			printf("%s\n", path);
 
                         ret = execv(path,firstCommand->argv);	
                         if(ret!=0){     
@@ -368,7 +371,7 @@ void jobs(struct list* jobList){
 	     struct list_elem* element2 = list_front(&(job->commands));
 	     struct esh_command *firstCommand = list_entry(element2, struct esh_command, elem);
 
-	     //TODO add name member get command name
+	     //print command name
 	     printf("%s\n", firstCommand->argv[0]);
 	}
 }
