@@ -33,6 +33,10 @@ void giveTerminalControl(int pid);
 void give_terminal_to(pid_t pgrp, struct termios *pg_tty_state);
 /* initialize pipeline fields that can be defined once a process is started */
 void initializeJob(struct esh_pipeline* job, int pgrp, enum job_status status);
+/* update the status of a job  inpsired by Signals 5 demo catch_child*/
+void updateStatus(int pid, int status);
+/* finds job with specified jid */
+struct esh_pipeline * findJID(int jid);
 
 //list of processes
 static struct list jobs_list;
@@ -136,57 +140,12 @@ void catch_sigtstp(int sig, siginfo_t* info, void* context){
 /* catch sigchld when one or more child processes change state 
    taken and modified from Signal5 example */
 void catch_child(int sig, siginfo_t* info, void* context){
-    
+    printf("catch Child \n");
     /* reap all children and/or report status change */
     int status;
     int  pid;
     while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
-	
-	//get process
-	struct list_elem *e = findPID(&jobs_list, pid);
-	
-
-      //process exited
-      if( WIFEXITED(status)) {
-          printf("Received sigal that child process (%d) terminated. \n", pid);
-	  //remove process with pid from list
-	  if (e){
-		list_remove(e);
-	   }
-	   else{
-		printf("ERROR: could not find child on list EXITED");
-	   }	
-      }
-      //process stopped
-      if (WIFSTOPPED(status)) { 
-          printf("Received signal that child process (%d) stopped. \n", pid);
-	   //set process with pid as stopped
-	   if (e){
-		struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
-		pipe->status = STOPPED;
-
-	   }
-	   else{
-		printf("ERROR: could not find child on list STOPPED");
-	   }		  
-      }
-      if (WIFCONTINUED(status)) {
-          printf("Received signal that child process (%d) continued. \n", pid);
-	   // need to set process with pid as continued
-	   if (e){
-		struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
-		pipe->status = FOREGROUND;
-	   }
-	   else{
-		printf("ERROR: could not find child on list CONTINUED");
-	   }	
-		  
-      }
-      if( WIFSIGNALED(status)) {
-          printf("Received signal that child process (%d) received signal [%d] \n", 
-                  pid, WTERMSIG(status));
-	  //TODO dont know...
-      }
+	updateStatus(pid, status);
     }
 }
 
@@ -268,11 +227,38 @@ main(int ac, char *av[])
 		jobs(&jobs_list);
 	}
 	else if (strcmp(firstCommand->argv[0], "fg") == 0){
+		int fgJID = atoi(firstCommand->argv[1]);
+		struct esh_pipeline* fgJob = findJID(fgJID);
 		
+		if (fgJob){
+			
+			//if job is in stopped send it SIGCONT
+			if (fgJob->status == STOPPED){
+				kill(fgJob->pgrp, SIGCONT);
+			}
+			fgJob->status = FOREGROUND;
+			
+						
+
+			give_terminal_to(fgJob->pgrp, shell_state);
+	
+			//give fg status and wait
+			int status;
+			int pidT;
+			if((pidT = waitpid(-1, &status, WUNTRACED)) > -1){		
+				give_terminal_to(getpgrp(), shell_state);
+				updateStatus(pidT, status);	
+			}		
+		}
 	}
 	else if (strcmp(firstCommand->argv[0], "bg") == 0){
+		int bgJID = atoi(firstCommand->argv[1]);
+		struct esh_pipeline* bgJob = findJID(bgJID);
+		kill(bgJob->pgrp, SIGCONT);
 
+		
 	}
+	//TODO Does not work when a fg job is stopped
 	else if (strcmp(firstCommand->argv[0], "kill") == 0){
 		int killPid = atoi(firstCommand->argv[1]);
 		killProcess(killPid);
@@ -301,12 +287,10 @@ main(int ac, char *av[])
                 		}
         		}
 			
-			initializeJob(pipe, getpid(), FOREGROUND);
-			list_remove(&(pipe->elem));
-			list_push_back(&jobs_list, &(pipe->elem));
+			
 				
 			//make process leader of its own process group
-			setpgid(0, 0);
+			setpgid(pid, pid);
 
                         int ret = 0;
                         char* path = (char*)malloc(sizeof(char)*100);
@@ -322,15 +306,6 @@ main(int ac, char *av[])
 		}
 		//in the parent
 		else {
-			//check for &
-			//int counter = 0;
-			//bool bg = false;
-			//while (firstCommand->argv[counter] != NULL){
-			//	if (strcmp(firstCommand->argv[counter], "&") == 0){
-			//		bg = true;
-			//		break;
-			//	}
-			//}		
 			
 			//initialize child process pid
 			printf("child pid: %d\n", pid);			
@@ -342,21 +317,30 @@ main(int ac, char *av[])
 
 			//add new job to jobs list
 			//TODO make sure pgrp is the first process and not reset
-			//TODO need distinction from background and foreground
-			initializeJob(pipe, pid, FOREGROUND);
+			if (!pipe->bg_job){	
+				initializeJob(pipe, pid, FOREGROUND);
+			}
+			else{
+				initializeJob(pipe, pid, BACKGROUND);
+			}
 			list_remove(&(pipe->elem));
-			list_push_back(&jobs_list, &(pipe->elem));
-			give_terminal_to(pid, NULL);
-	
-			int status;
+			
+			//block signal when adding
 			esh_signal_block(SIGCHLD);
-			//esh_signal_block(SIGINT);
-			//esh_signal_block(SIGTSTP);
-			waitpid(pid, &status, WUNTRACED);
+			list_push_back(&jobs_list, &(pipe->elem));
 			esh_signal_unblock(SIGCHLD);
-			//esh_signal_unblock(SIGINT);
-			//esh_signal_unblock(SIGTSTP);
-			give_terminal_to(getpgrp(), shell_state);
+
+			if (!pipe->bg_job){
+				give_terminal_to(pid, shell_state);
+	
+				//wait for new child to finish TODO only if foreground
+				int status;
+				int pidT;
+				if((pidT = waitpid(-1, &status, WUNTRACED)) > -1){		
+					give_terminal_to(getpgrp(), shell_state);
+					updateStatus(pidT, status);	
+				}	
+			}
 		}
                 
 	}
@@ -457,4 +441,74 @@ void give_terminal_to(pid_t pgrp, struct termios *pg_tty_state)
 void initializeJob(struct esh_pipeline* job, int pgrp,  enum job_status status){
 	job->pgrp = pgrp;
 	job->status = status;
+}
+
+/* update the status of a job  inpsired by Signals 5 demo catch_child*/
+void updateStatus(int pid, int status){
+	//get process
+	struct list_elem *e = findPID(&jobs_list, pid);
+	
+
+      //process exited
+      if( WIFEXITED(status)) {
+          printf("Received sigal that child process (%d) terminated 2. \n", pid);
+	  //remove process with pid from list
+	  if (e){
+		list_remove(e);
+	   }
+	   else{
+		printf("ERROR: could not find child on list EXITED");
+	   }	
+      }
+      //process stopped
+      if (WIFSTOPPED(status)) { 
+          printf("Received signal that child process (%d) stopped. \n", pid);
+	   //set process with pid as stopped
+	   if (e){
+		struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
+		pipe->status = STOPPED;
+
+	   }
+	   else{
+		printf("ERROR: could not find child on list STOPPED");
+	   }		  
+      }
+      if (WIFCONTINUED(status)) {
+          printf("Received signal that child process (%d) continued. \n", pid);
+	   // need to set process with pid as continued
+	   if (e){
+		struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
+		pipe->status = FOREGROUND;
+	   }
+	   else{
+		printf("ERROR: could not find child on list CONTINUED");
+	   }	
+		  
+      }
+      if( WIFSIGNALED(status)) {
+          printf("Received signal that child process (%d) received signal [%d] \n", 
+                  pid, WTERMSIG(status));
+	   if (e){
+		list_remove(e);
+	   }
+	   else{
+		printf("ERROR: could not find child on list SIGNALED");
+	   }	
+      }
+}
+
+/* finds job with specified jid */
+struct esh_pipeline * findJID(int searchJid){
+	int jid = 1;
+	struct list_elem *e;
+	for (e = list_begin (&(jobs_list)); e != list_end (&(jobs_list)); e = list_next (e))
+        {	
+            	 struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
+		 if (searchJid == jid){
+			return pipe;
+		 }
+		 jid++; 
+	}
+	printf("No job with specified JID\n");
+	return NULL;
 }
