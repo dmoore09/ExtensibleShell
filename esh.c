@@ -107,7 +107,9 @@ void catch_sigint(int sig, siginfo_t* info, void* context){
 		//get process with the right pid and remove from process list
 		struct list_elem *e = findPID(&jobs_list, pid);
 		if (e){
+			printf("kill process sigint\n");
 			list_remove(e);
+			killProcess(pid);
 		}	
 	}
 }
@@ -123,6 +125,8 @@ void catch_sigtstp(int sig, siginfo_t* info, void* context){
 		if (e){
 			struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
 			pipe->status = STOPPED;
+			stopProcess(pid);
+			printf("kill process sigtstp\n");
 		}
 	}
 	
@@ -160,6 +164,7 @@ void catch_child(int sig, siginfo_t* info, void* context){
 	   if (e){
 		struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
 		pipe->status = STOPPED;
+
 	   }
 	   else{
 		printf("ERROR: could not find child on list STOPPED");
@@ -263,7 +268,7 @@ main(int ac, char *av[])
 		jobs(&jobs_list);
 	}
 	else if (strcmp(firstCommand->argv[0], "fg") == 0){
-
+		
 	}
 	else if (strcmp(firstCommand->argv[0], "bg") == 0){
 
@@ -296,9 +301,12 @@ main(int ac, char *av[])
                 		}
         		}
 			
+			initializeJob(pipe, getpid(), FOREGROUND);
+			list_remove(&(pipe->elem));
+			list_push_back(&jobs_list, &(pipe->elem));
 				
 			//make process leader of its own process group
-			//setpgid(0, 0);
+			setpgid(0, 0);
 
                         int ret = 0;
                         char* path = (char*)malloc(sizeof(char)*100);
@@ -330,7 +338,7 @@ main(int ac, char *av[])
 
 			//double check, set child into process group 
 			//TODO first process in pipe olny!!!
-			//setpgid(pid, pid);
+			setpgid(pid, pid);
 
 			//add new job to jobs list
 			//TODO make sure pgrp is the first process and not reset
@@ -338,7 +346,17 @@ main(int ac, char *av[])
 			initializeJob(pipe, pid, FOREGROUND);
 			list_remove(&(pipe->elem));
 			list_push_back(&jobs_list, &(pipe->elem));
-			printf("job added\n");
+			give_terminal_to(pid, NULL);
+	
+			int status;
+			esh_signal_block(SIGCHLD);
+			//esh_signal_block(SIGINT);
+			//esh_signal_block(SIGTSTP);
+			waitpid(pid, &status, WUNTRACED);
+			esh_signal_unblock(SIGCHLD);
+			//esh_signal_unblock(SIGINT);
+			//esh_signal_unblock(SIGTSTP);
+			give_terminal_to(getpgrp(), shell_state);
 		}
                 
 	}
