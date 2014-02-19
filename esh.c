@@ -363,6 +363,42 @@ main(int ac, char *av[])
     return 0;
 }
 
+void runPipe(esh_command_line * cmds){
+	int status;
+	//numpipes = number of programs in pipe
+	int numPipes;
+	//each pipe has an in and out
+	int pipes[4];
+	//0 is read, 1 is write
+	int p1 = pipe(pipes);
+	int p2 = pipe(pipes+2);
+	int i = 1;
+	for(i = 1; i < numPipes; i++){
+			//Declare command1
+
+			//Declare command 
+			//Checks for the pipes to be declared
+			if(p1!=0 || p2!=0){
+				fprintf(stderr,"Piping failed");
+				return;
+			}
+
+			//pipe[0] = input
+			//pipe[1] = output
+			//dup copies the output (0) to the input of pipe 2
+			dup2(pipe[2],0);
+			//close the pipes
+			close(pipes[0]);
+			close(pipes[1]);
+			close(pipes[2]);
+			close(pipes[3]);
+			//execute program a
+			//execvp(*command, command);
+			//wait_for_job();
+	}
+
+}
+
 /* our version of the jobs command
    goes through list of available pipelines and prints them out */
 void jobs(struct list* jobList){
