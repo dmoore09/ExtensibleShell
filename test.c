@@ -83,4 +83,34 @@ void elseifstatement(char *av[]){
 		}
 	}
 }
+
+void runPipe(esh_command_line * cmds){
+        int status;
+        //process commands
+
+        //numpipes = number of programs in pipe
+        int numPipes;
+        //each pipe has an in and out
+        int pipes[numPipes*2];
+        int i = 0;
+        int p;
+        //Sets up all the pipes
+        for(i = 0; i < numPipes; i++){
+                p = pipe(pipes+(i*2))
+                if(p!=0){
+                        fprintf(stderr, "Piping Failed");
+                        return;
+                }
+        }
+        //0 is read, 1 is write
+        for(i = 0; i < numPipes-1; i++){
+                dup2(pipes[(2*i)+1],(2*i)+2;
+        }
+        dup2(pipes[(2*(numPipes-1))+1],1);
+        for(i = 0; i < numPipes; i++){
+                close(pipes[2*i]);
+                close(pipes[(2*i)+1]);
+        }
+}
+
 */
