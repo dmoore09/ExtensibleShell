@@ -16,6 +16,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 void catch_sigint(int sig, siginfo_t* info, void* context);
 void catch_sigtstp(int sig, siginfo_t* info, void* context);
@@ -24,9 +27,9 @@ struct list_elem* findPID(struct list* plist, int pid);
 /* executes jobs command */
 void jobs(struct list* pipelineList);
 /* executes kill command */
-void killProcess(int pid);
+void killProcess(int jid);
 /* exectues the stop command */
-void stopProcess(int pid);
+void stopProcess(int jid);
 /* gives a process group terminal control  used in fg, starting new process */
 void giveTerminalControl(int pid);
 /* give a process group control of the terminal credit: project1 faq #4*/
@@ -37,6 +40,11 @@ void initializeJob(struct esh_pipeline* job, int pgrp, enum job_status status);
 void updateStatus(int pid, int status);
 /* finds job with specified jid */
 struct esh_pipeline * findJID(int jid);
+void printName(struct esh_pipeline* pipe);
+/* set up pipes */
+void runPipe(int numPipes, int counter, int * pipes);
+
+void updateJID(void);
 
 //list of processes
 static struct list jobs_list;
@@ -104,16 +112,17 @@ struct esh_shell shell =
 /* catch sigint (^c)  kill a foreground process  
    TODO sigsetjmp()/siglongjmp() FAQ 13 */
 void catch_sigint(int sig, siginfo_t* info, void* context){
-	printf("caught sigint\n");	
+	//printf("caught sigint\n");	
 	int status;
         int  pid;
 	while ((pid = waitpid(-1, &status, WNOHANG|WCONTINUED|WUNTRACED)) > 0){
 		//get process with the right pid and remove from process list
 		struct list_elem *e = findPID(&jobs_list, pid);
 		if (e){
-			printf("kill process sigint\n");
+			//printf("kill process sigint\n");
 			list_remove(e);
 			killProcess(pid);
+			updateJID();
 		}	
 	}
 }
@@ -130,7 +139,7 @@ void catch_sigtstp(int sig, siginfo_t* info, void* context){
 			struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
 			pipe->status = STOPPED;
 			stopProcess(pid);
-			printf("kill process sigtstp\n");
+			//printf("kill process sigtstp\n");
 		}
 	}
 	
@@ -140,7 +149,7 @@ void catch_sigtstp(int sig, siginfo_t* info, void* context){
 /* catch sigchld when one or more child processes change state 
    taken and modified from Signal5 example */
 void catch_child(int sig, siginfo_t* info, void* context){
-    printf("catch Child \n");
+    //printf("catch Child \n");
     /* reap all children and/or report status change */
     int status;
     int  pid;
@@ -214,13 +223,34 @@ main(int ac, char *av[])
 	//look at command determine what needs to be done
 	//get first pipeline
 	struct list_elem* element1 = list_front(&(cline->pipes));
-	struct esh_pipeline *pipe = list_entry(element1, struct esh_pipeline, elem);
+	struct esh_pipeline *pipe1 = list_entry(element1, struct esh_pipeline, elem);
+	
+
 	
 	struct list_elem* e;
 	bool start = true;
+	//if piped is true then pipeline has more then one command
+	//TODO posibly a list of all the pipes neccesary?
+	bool piped = false;
+	int cmdCounter = 0;
+	int pipes[(list_size(&pipe1->commands) - 1) * 2];
+	int p;
+	if (list_size(&pipe1->commands) > 1){
+		piped = true;
+		//create a pipe 
+		for(i = 0; i < (list_size(&pipe1->commands) - 1); i++){
+               		p = pipe(pipes+(i*2));
+               		if(p!=0){
+                       		fprintf(stderr, "Piping Failed");
+                       		continue;
+               		}
+       		}	
+	}
+	
 	//loop through all commands in pipeline
-	//TODO ?? SHOULD WE ALL BASIC COMMANDS TO BE PIPED??
-	for (e = list_begin (&(pipe->commands)); e != list_end (&(pipe->commands)); e = list_next (e)){		
+	//NOTE: basic commands can be piped but will only be the first command!
+	for (e = list_begin (&(pipe1->commands)); e != list_end (&(pipe1->commands)); e = list_next (e)){
+		
 		//get the first command
 		struct esh_command *firstCommand = list_entry(e, struct esh_command, elem);
 		//get string of first command test
@@ -247,6 +277,9 @@ main(int ac, char *av[])
 				//give fg status and wait
 				int status;
 				int pidT;
+				//print out the name
+				printName(fgJob);
+				printf("\n");
 				if((pidT = waitpid(-1, &status, WUNTRACED)) > -1){		
 					give_terminal_to(getpgrp(), shell_state);
 					updateStatus(pidT, status);	
@@ -260,13 +293,13 @@ main(int ac, char *av[])
 		}
 		//TODO Does not work when a fg job is stopped
 		else if (strcmp(firstCommand->argv[0], "kill") == 0){
-			int killPid = atoi(firstCommand->argv[1]);
-			killProcess(killPid);
+			int killJid = atoi(firstCommand->argv[1]);
+			killProcess(killJid);
 		}
 		else if (strcmp(firstCommand->argv[0], "stop") == 0){
 			//TODO save terminal State! FAQ #12
-			int stopPid = atoi(firstCommand->argv[1]);
-			stopProcess(stopPid);
+			int stopJid = atoi(firstCommand->argv[1]);
+			stopProcess(stopJid);
 		}
 		else if(strcmp(firstCommand->argv[0], "logout") == 0){
 			printf("logging out of shell\n");
@@ -274,7 +307,7 @@ main(int ac, char *av[])
 		}
 		//user wants to start a program
 		else{	
-			printf("user wants to start a program\n");
+			//printf("user wants to start a program\n");
 			 //you are in the child
 			int pid = fork();
 			if(pid == 0){
@@ -282,7 +315,7 @@ main(int ac, char *av[])
 				int j = 0;
 				for(j = 0;j < cmdsize;j++){
 			       		if(strcmp(cmds[j],firstCommand->argv[0]) == 0){
-			       			fprintf(stderr,"This is a basic command");
+			       			//fprintf(stderr,"This is a basic command");
 						execvp(firstCommand->argv[0], firstCommand->argv);
 					}
 				}
@@ -294,18 +327,36 @@ main(int ac, char *av[])
 				}
 				else{
 					//add to process group
-					setpgid(pid, pipe->pgrp);
+					setpgid(pid, pipe1->pgrp);
 				}
-			
-
-
-				int ret = 0;
-				char* path = (char*)malloc(sizeof(char)*100);
-				getcwd(path, 100);
-				strcat(path,"/");
-				strcat(path,firstCommand->argv[0]);
-
-				ret = execv(path,firstCommand->argv);	
+				
+				//io redirection input
+				if (firstCommand->iored_output){
+					int newOut;
+					//append
+					if (firstCommand->append_to_output){
+						newOut = open(firstCommand->iored_output, O_APPEND | O_WRONLY | O_CREAT | 								S_IRWXU);	
+					}
+					//dont append
+					else{
+						newOut = open(firstCommand->iored_output, O_WRONLY | O_CREAT | S_IRWXU);	
+					}
+					dup2(newOut, 1);
+					close(newOut);
+				}
+				//io redirection output
+				if (firstCommand->iored_input){
+					int newIn = open(firstCommand->iored_output, O_WRONLY | S_IRWXU);
+					dup2(newIn, 0);
+					close(newIn);
+				}
+				
+				if (piped){
+					runPipe((list_size(&pipe1->commands) - 1), cmdCounter, pipes);
+				}
+				
+				int ret = 0;			
+				ret = execvp(firstCommand->argv[0],firstCommand->argv);	
 				if(ret!=0){     
 				  printf("Execution failed\n");
 				  exit(0);
@@ -313,35 +364,36 @@ main(int ac, char *av[])
 			}
 			//in the parent
 			else {
-		
 				//add new job to jobs list
 				//TODO make sure pgrp is the first process and not reset
-				if (!pipe->bg_job && start){
+				if (!pipe1->bg_job && start){
 					start = false;	
-					initializeJob(pipe, pid, FOREGROUND);
+					initializeJob(pipe1, pid, FOREGROUND);
 				}
 				else if (start){
 					start = false;
-					initializeJob(pipe, pid, BACKGROUND);
+					initializeJob(pipe1, pid, BACKGROUND);
 				}
-				list_remove(&(pipe->elem));
-
+				pipe1->name = firstCommand->argv[0];
+				list_remove(&(pipe1->elem));
+				
 				//initialize child process pid
-				printf("child pid: %d\n", pid);			
+				//printf("child pid: %d\n", pid);			
 				firstCommand->pid = pid;
 
 				//double check, set child into process group 
 				//TODO first process in pipe olny!!!
-				setpgid(pid, pipe->pgrp);
+				setpgid(pid, pipe1->pgrp);
 
 				
 		
 				//block signal when adding
 				esh_signal_block(SIGCHLD);
-				list_push_back(&jobs_list, &(pipe->elem));
+				list_push_back(&jobs_list, &(pipe1->elem));
 				esh_signal_unblock(SIGCHLD);
+				pipe1->jid = list_size(&(jobs_list));
 
-				if (!pipe->bg_job){
+				if (!pipe1->bg_job){
 					give_terminal_to(pid, shell_state);
 
 					//wait for new child to finish TODO only if foreground
@@ -352,6 +404,12 @@ main(int ac, char *av[])
 						updateStatus(pidT, status);	
 					}	
 				}
+				//bg job
+				else{
+					printf("[%d] %d\n", pipe1->jid, pid);
+				}
+				//increment command counter
+				cmdCounter++;
 			}
 		
 		}
@@ -378,17 +436,16 @@ void jobs(struct list* jobList){
 	     printf("[%d]", jobNum);
 	    
 	     if (job->status == STOPPED || job->status == NEEDSTERMINAL){
-		printf("Stopped		");
+		printf("+  Stopped                 ");
 	     }
 	     else{
-		printf("Running		");
+		printf("-  Running                 ");
 	     }
-	     
-	     struct list_elem* element2 = list_front(&(job->commands));
-	     struct esh_command *firstCommand = list_entry(element2, struct esh_command, elem);
-
 	     //print command name
-	     printf("%s\n", firstCommand->argv[0]);
+	     printf("(");
+	     printName(job);
+	     printf(")\n");
+	     jobNum++;
 	}
 }
 
@@ -409,7 +466,7 @@ struct list_elem* findPID(struct list* list, int pid){
        		{	
 			struct esh_command *cmd = list_entry (e2, struct esh_command, elem);
 	    		 if (cmd->pid == pid){
-				printf("Found process with: %d\n", pid);
+				//printf("Found process with: %d\n", pid);
 				return e;
 	     		}  
 		}
@@ -417,15 +474,32 @@ struct list_elem* findPID(struct list* list, int pid){
 	return NULL;
 }
 
+//whenever a job is removed update the jid or remaining processes
+void updateJID(){
+	int jid = 1;
+	struct list_elem *e;
+	for (e = list_begin (&(jobs_list)); e != list_end (&(jobs_list)); e = list_next (e))
+        {	
+            	 struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
+		 pipe->jid = jid;
+		 jid++; 
+	}
+}
+
 /* execute the kill command */
-void killProcess(int pid){
+void killProcess(int jid){
 	//send a SIGKILL to child process with pid
-	kill(pid, SIGINT);
+	struct esh_pipeline *pipe = findJID(jid);
+	if (pipe){
+		kill (pipe->pgrp, SIGINT);
+	}	
+	
 }
 
 /* stop a process */
-void stopProcess(int pid){
-	kill (pid, SIGSTOP);
+void stopProcess(int jid){
+	struct esh_pipeline *pipe = findJID(jid);	
+	kill (pipe->pgrp, SIGSTOP);
 }
 
 /**
@@ -464,10 +538,11 @@ void updateStatus(int pid, int status){
 
       //process exited
       if( WIFEXITED(status)) {
-          printf("Received sigal that child process (%d) terminated 2. \n", pid);
+          //printf("Received sigal that child process (%d) terminated 2. \n", pid);
 	  //remove process with pid from list
 	  if (e){
 		list_remove(e);
+		updateJID();
 	   }
 	   else{
 		printf("ERROR: could not find child on list EXITED");
@@ -475,11 +550,17 @@ void updateStatus(int pid, int status){
       }
       //process stopped
       if (WIFSTOPPED(status)) { 
-          printf("Received signal that child process (%d) stopped. \n", pid);
+          //printf("Received signal that child process (%d) stopped. \n", pid);
 	   //set process with pid as stopped
 	   if (e){
 		struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
 		pipe->status = STOPPED;
+		//print out 
+		printf("\n");
+		printf("[%d]+  Stopped                 (", pipe->jid);
+		//print out name
+		printName(pipe);
+		printf(")\n");
 
 	   }
 	   else{
@@ -487,7 +568,7 @@ void updateStatus(int pid, int status){
 	   }		  
       }
       if (WIFCONTINUED(status)) {
-          printf("Received signal that child process (%d) continued. \n", pid);
+          //printf("Received signal that child process (%d) continued. \n", pid);
 	   // need to set process with pid as continued
 	   if (e){
 		struct esh_pipeline *pipe = list_entry (e, struct esh_pipeline, elem);
@@ -499,10 +580,11 @@ void updateStatus(int pid, int status){
 		  
       }
       if( WIFSIGNALED(status)) {
-          printf("Received signal that child process (%d) received signal [%d] \n", 
-                  pid, WTERMSIG(status));
+         // printf("Received signal that child process (%d) received signal [%d] \n", 
+          //        pid, WTERMSIG(status));
 	   if (e){
 		list_remove(e);
+		updateJID();
 	   }
 	   else{
 		printf("ERROR: could not find child on list SIGNALED");
@@ -524,4 +606,36 @@ struct esh_pipeline * findJID(int searchJid){
 	}
 	printf("No job with specified JID\n");
 	return NULL;
+}
+
+/* print out name of the pipeline */
+void printName(struct esh_pipeline* pipe){
+	struct list_elem *e;
+	int counter = 0;
+	for (e = list_begin (&(pipe->commands)); e != list_end (&(pipe->commands)); e = list_next (e)){
+			struct esh_command *command = list_entry(e, struct esh_command, elem);
+			while (command->argv[counter] != NULL){
+				printf("%s", command->argv[counter]);
+				if (command->argv[counter + 1] != NULL){
+					printf(" ");
+				}
+				counter++;
+			}	
+	}
+}
+
+/* set up pipes for a process */
+void runPipe(int numPipes, int counter, int* pipes){
+       //0 is read, 1 is write
+       //directs the pipes (except for last)
+	if (counter < numPipes){
+      		 dup2(pipes[(2*counter)+1],(2*counter)+2);
+	}
+
+       //pipes final command to stdout
+       if (counter == numPipes){
+       		dup2(pipes[(2*(numPipes-1))+1],1);
+	}
+        close(pipes[2*counter]);
+        close(pipes[(2*counter)+1]);
 }
