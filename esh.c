@@ -174,15 +174,6 @@ main(int ac, char *av[])
     int opt;
     list_init(&esh_plugin_list);
     //Sets up the commands
-    int cmdsize = 0;
-    char** cmds = (char**)malloc(sizeof(char*)*100);
-    int i = 0;
-    for(i=0;i<100;i++){
-            cmds[i] = (char*)malloc(sizeof(char)*10);
-    }
-    strcpy(cmds[0],"ls");
-    strcpy(cmds[1],"cd");
-    cmdsize = 2;
 
     /* Process command-line arguments. See getopt(3) */
     while ((opt = getopt(ac, av, "hp:")) > 0) {
@@ -230,20 +221,26 @@ main(int ac, char *av[])
 	struct list_elem* e;
 	bool start = true;
 	//if piped is true then pipeline has more then one command
-	//TODO posibly a list of all the pipes neccesary?
 	bool piped = false;
 	int cmdCounter = 0;
-	int pipes[(list_size(&pipe1->commands) - 1) * 2];
-	int p;
+	//number of pipes needed
+	int pipeNum = (list_size(&pipe1->commands) - 1);
+	int* pipeArray[pipeNum];
+	//int* pipeArray[pipeNum];
 	if (list_size(&pipe1->commands) > 1){
 		piped = true;
-		//create a pipe 
-		for(i = 0; i < (list_size(&pipe1->commands) - 1); i++){
-               		p = pipe(pipes+(i*2));
-               		if(p!=0){
-                       		fprintf(stderr, "Piping Failed");
-                       		continue;
-               		}
+		//create an array of pipe s
+		int i;
+		for(i = 0; i < pipeNum; i++){
+               		int fd[2];
+			pipeArray[i] = fd;
+			pipe(fd);
+
+			//TODO error checking
+               		//if(pipeArray[i] != 0){
+                       	//	fprintf(stderr, "Piping Failed");
+                       	//	continue;
+               		//}
        		}	
 	}
 	
@@ -311,14 +308,6 @@ main(int ac, char *av[])
 			 //you are in the child
 			int pid = fork();
 			if(pid == 0){
-				
-				int j = 0;
-				for(j = 0;j < cmdsize;j++){
-			       		if(strcmp(cmds[j],firstCommand->argv[0]) == 0){
-			       			//fprintf(stderr,"This is a basic command");
-						execvp(firstCommand->argv[0], firstCommand->argv);
-					}
-				}
 		
 				if (start){
 					//make process leader of its own process group
@@ -351,8 +340,34 @@ main(int ac, char *av[])
 					close(newIn);
 				}
 				
-				if (piped){
-					runPipe((list_size(&pipe1->commands) - 1), cmdCounter, pipes);
+				printf("comdCounter: %d\n", cmdCounter);			
+				//piped and the first element
+				if(piped && cmdCounter == 0){
+					int* fd = pipeArray[0];
+					//connect out end of pipe to stdout
+					dup2(fd[1], 1);
+					close(fd[1]);
+				}
+				//piped and the last element
+				else if(piped && cmdCounter == pipeNum){
+					int index = cmdCounter/2;
+					int* fd = pipeArray[index];
+					dup2(fd[0], 0);
+					close(fd[0]);
+				}
+				//piped and not the first element or last
+				else {
+				        //get right index in array
+					int index = cmdCounter/2;
+					printf("index: %d, +1: %d, pipe#: %d\n", index, index + 1, pipeNum);
+					int* fd = pipeArray[index];
+					int* fd2 = pipeArray[index + 1];
+					//read from index
+					dup2(fd[0], 0);
+					//output to next pipe
+					dup2(fd2[1], 1);
+					close(fd[0]);
+					close(fd2[1]);
 				}
 				
 				int ret = 0;			
@@ -364,8 +379,31 @@ main(int ac, char *av[])
 			}
 			//in the parent
 			else {
+
+				//close pipes
+				//piped and the first element
+				if(piped && cmdCounter == 0){
+					int* fd = pipeArray[0];
+					close(fd[1]);
+				}
+				//piped and the last element
+				else if(piped && cmdCounter == pipeNum){
+					int index = cmdCounter/2;
+					int* fd = pipeArray[index];
+					close(fd[0]);
+				}
+				//piped and not the first element or last
+				else {
+				        //get right index in array
+					int index = cmdCounter/2;
+					int* fd = pipeArray[index];
+					int* fd2 = pipeArray[index + 1];
+					close(fd[0]);
+					close(fd2[1]);
+				}			
+				cmdCounter++;
+
 				//add new job to jobs list
-				//TODO make sure pgrp is the first process and not reset
 				if (!pipe1->bg_job && start){
 					start = false;	
 					initializeJob(pipe1, pid, FOREGROUND);
@@ -409,7 +447,7 @@ main(int ac, char *av[])
 					printf("[%d] %d\n", pipe1->jid, pid);
 				}
 				//increment command counter
-				cmdCounter++;
+				
 			}
 		
 		}
@@ -419,42 +457,6 @@ main(int ac, char *av[])
 	
     }
     return 0;
-}
-
-void runPipe(esh_command_line * cmds){
-	int status;
-	//numpipes = number of programs in pipe
-	int numPipes;
-	//each pipe has an in and out
-	int pipes[4];
-	//0 is read, 1 is write
-	int p1 = pipe(pipes);
-	int p2 = pipe(pipes+2);
-	int i = 1;
-	for(i = 1; i < numPipes; i++){
-			//Declare command1
-
-			//Declare command 
-			//Checks for the pipes to be declared
-			if(p1!=0 || p2!=0){
-				fprintf(stderr,"Piping failed");
-				return;
-			}
-
-			//pipe[0] = input
-			//pipe[1] = output
-			//dup copies the output (0) to the input of pipe 2
-			dup2(pipe[2],0);
-			//close the pipes
-			close(pipes[0]);
-			close(pipes[1]);
-			close(pipes[2]);
-			close(pipes[3]);
-			//execute program a
-			//execvp(*command, command);
-			//wait_for_job();
-	}
-
 }
 
 /* our version of the jobs command
