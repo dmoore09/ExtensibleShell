@@ -2,6 +2,9 @@
 #include <stdbool.h>
 #include "../esh.h"
 #include "../esh-sys-utils.h"
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
 static bool
 init_plugin(struct esh_shell * shell){
 	printf("Plugin 'random' initialized\n");
