@@ -46,6 +46,8 @@ void runPipe(int numPipes, int counter, int * pipes);
 
 void updateJID(void);
 
+bool checkPlugin(struct esh_command* command);
+
 //list of processes
 static struct list jobs_list;
 //shell state used to restore state
@@ -89,7 +91,7 @@ build_prompt_from_plugins(void)
             free(p);
         }
 		//return list pointer to the beginning
-		list_rbegin (&jobs_list);
+		list_rbegin (&esh_plugin_list);
     }
 
     /* default prompt */
@@ -250,8 +252,13 @@ main(int ac, char *av[])
 		
 		//get the first command
 		struct esh_command *firstCommand = list_entry(e, struct esh_command, elem);
+
+		//check for plugins
+		if (checkPlugin(firstCommand)){
+			continue;
+		}
 		//get string of first command test
-		if (strcmp(firstCommand->argv[0], "jobs") == 0){
+		else if (strcmp(firstCommand->argv[0], "jobs") == 0){
 			//print out all jobs
 			jobs(&jobs_list);
 		}
@@ -340,26 +347,31 @@ main(int ac, char *av[])
 					close(newIn);
 				}
 				
-				printf("comdCounter: %d\n", cmdCounter);			
+				//printf("comdCounter: %d\n", cmdCounter);			
 				//piped and the first element
 				if(piped && cmdCounter == 0){
 					int* fd = pipeArray[0];
 					//connect out end of pipe to stdout
 					dup2(fd[1], 1);
 					close(fd[1]);
+					close(fd[0]);
 				}
 				//piped and the last element
 				else if(piped && cmdCounter == pipeNum){
+					
 					int index = cmdCounter/2;
+					printf("index: %d", index);
+					printf("last element\n");
 					int* fd = pipeArray[index];
 					dup2(fd[0], 0);
 					close(fd[0]);
+					close(fd[1]);
 				}
 				//piped and not the first element or last
-				else {
+				else if (piped){
 				        //get right index in array
 					int index = cmdCounter/2;
-					printf("index: %d, +1: %d, pipe#: %d\n", index, index + 1, pipeNum);
+					//printf("index: %d, +1: %d, pipe#: %d\n", index, index + 1, pipeNum);
 					int* fd = pipeArray[index];
 					int* fd2 = pipeArray[index + 1];
 					//read from index
@@ -367,10 +379,12 @@ main(int ac, char *av[])
 					//output to next pipe
 					dup2(fd2[1], 1);
 					close(fd[0]);
+					close(fd[1]);
 					close(fd2[1]);
+					close(fd2[0]);
 				}
 				
-				int ret = 0;			
+				int ret = 0;
 				ret = execvp(firstCommand->argv[0],firstCommand->argv);	
 				if(ret!=0){     
 				  printf("Execution failed\n");
@@ -391,15 +405,18 @@ main(int ac, char *av[])
 					int index = cmdCounter/2;
 					int* fd = pipeArray[index];
 					close(fd[0]);
+					close(fd[1]);
 				}
 				//piped and not the first element or last
-				else {
+				else if (piped){
 				        //get right index in array
 					int index = cmdCounter/2;
 					int* fd = pipeArray[index];
 					int* fd2 = pipeArray[index + 1];
 					close(fd[0]);
 					close(fd2[1]);
+					close(fd[1]);
+					//close(fd2[0]);
 				}			
 				cmdCounter++;
 
@@ -439,6 +456,7 @@ main(int ac, char *av[])
 					int pidT;
 					if((pidT = waitpid(-1, &status, WUNTRACED)) > -1){		
 						give_terminal_to(getpgrp(), shell_state);
+						//printf("shell has access\n");
 						updateStatus(pidT, status);	
 					}	
 				}
@@ -578,7 +596,8 @@ void updateStatus(int pid, int status){
       if( WIFEXITED(status)) {
           //printf("Received sigal that child process (%d) terminated 2. \n", pid);
 	  //remove process with pid from list
-	  if (e){
+	  if (e){	
+		give_terminal_to(getpid(), shell_state);
 		list_remove(e);
 		updateJID();
 	   }
@@ -599,6 +618,7 @@ void updateStatus(int pid, int status){
 		//print out name
 		printName(pipe);
 		printf(")\n");
+		
 
 	   }
 	   else{
@@ -676,4 +696,19 @@ void runPipe(int numPipes, int counter, int* pipes){
 	}
         close(pipes[2*counter]);
         close(pipes[(2*counter)+1]);
+}
+
+bool checkPlugin(struct esh_command* command){
+	struct list_elem * e = list_begin(&esh_plugin_list);
+
+        for (; e != list_end(&esh_plugin_list); e = list_next(e)) {
+        	struct esh_plugin *plugin = list_entry(e, struct esh_plugin, elem);
+		if (plugin->process_builtin){
+			if (plugin->process_builtin(command)){
+				return true;
+			}
+		}
+
+	}
+	return false;
 }
