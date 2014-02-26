@@ -212,13 +212,11 @@ main(int ac, char *av[])
             continue;
         }
 	
-	//TODO loop for all pipelines
-	//look at command determine what needs to be done
-	//get first pipeline
-	struct list_elem* element1 = list_front(&(cline->pipes));
-	struct esh_pipeline *pipe1 = list_entry(element1, struct esh_pipeline, elem);
+	//loop for all pipelines
+	while(!list_empty (&cline->pipes)){
 	
-
+	struct list_elem* element1 = list_pop_front (&cline->pipes);	
+	struct esh_pipeline *pipe1 = list_entry(element1, struct esh_pipeline, elem);
 	
 	struct list_elem* e;
 	bool start = true;
@@ -226,25 +224,27 @@ main(int ac, char *av[])
 	bool piped = false;
 	int cmdCounter = 0;
 	//number of pipes needed
-	int pipeNum = (list_size(&pipe1->commands));
-	int fd1[2];
-	int fd2[2];
-	if (pipeNum > 1){
+	int pipeNum = (list_size(&pipe1->commands) - 1);
+	int * pipeArray[pipeNum];
+	
+	if (pipeNum > 0){
 		piped = true;
 		//create an array of pipe s
 	}
+
+	int i;
+	for (i = 0; i < pipeNum; i++){
+		int* fd = malloc(2 * sizeof(int));
+		pipe(fd);
+
+		pipeArray[i] = fd;
+	}	
 	
 	//loop through all commands in pipeline
 	//NOTE: basic commands can be piped but will only be the first command!
 	for (e = list_begin (&(pipe1->commands)); e != list_end (&(pipe1->commands)); e = list_next (e)){
-		
 		//get the first command
 		struct esh_command *firstCommand = list_entry(e, struct esh_command, elem);
-
-		if (piped && (list_next(e) != list_tail(&(pipe1->commands)))){
-			pipe(fd1);
-			pipe(fd2);
-		}
 
 		//check for plugins
 		if (checkPlugin(firstCommand)){
@@ -325,11 +325,11 @@ main(int ac, char *av[])
 					int newOut;
 					//append
 					if (firstCommand->append_to_output){
-						newOut = open(firstCommand->iored_output, O_WRONLY|O_CREAT| O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);	
+						newOut = open(firstCommand->iored_output, O_WRONLY|O_CREAT| O_APPEND, S_IRUSR | 						S_IRGRP | S_IWGRP | S_IWUSR);	
 					}
 					//dont append
 					else{
-						newOut = open(firstCommand->iored_output, O_RDWR|O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);	
+						newOut = open(firstCommand->iored_output, O_RDWR|O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP 							| S_IWUSR);	
 					}
 					dup2(newOut, fileno(stdout));
 					close(newOut);
@@ -340,22 +340,35 @@ main(int ac, char *av[])
 					dup2(newIn, fileno(stdin));
 					close(newIn);
 				}
-				
-				//printf("comdCounter: %d\n", cmdCounter);			
+						
 				//piped and the first element
-				if(piped && (e != list_begin(&pipe1->commands))){
+				if(piped && (e == list_begin(&pipe1->commands))){
 					//connect out end of pipe to stdout
-					close(fd1[1]);					
-					dup2(fd1[0], 0);
-					close(fd1[0]);
-					printf("not first\n");
+					int* fd = pipeArray[0];			
+					dup2(fd[1], 1);
+					
 				}
 				//piped and the last element
-				else if(piped && (list_next(e) != list_tail(&(pipe1->commands)))){
-					close(fd2[0]);
+				else if(piped && (list_next(e) == list_tail(&pipe1->commands))){
+					int index = cmdCounter - 1;
+					int* fd = pipeArray[index];
+					dup2(fd[0], 0);
+				}
+				else if (piped){
+					int index = cmdCounter - 1;
+					int* fd1 = pipeArray[index];
+					int* fd2 = pipeArray[cmdCounter];
+					dup2(fd1[0], 0);
 					dup2(fd2[1], 1);
-					close(fd2[1]);
-					printf("not last\n");
+				}
+				
+				if (piped){
+					int i;
+					for (i = 0; i < pipeNum; i++){
+						int* fd = pipeArray[i];
+						close(fd[1]);
+						close(fd[0]);
+					}
 				}
 				
 				int ret = 0;
@@ -367,30 +380,27 @@ main(int ac, char *av[])
 			}
 			//in the parent
 			else {			
-				//piped and the first element
-				if(piped && (e != list_begin(&(pipe1->commands)))){
+				if(piped && (e == list_begin(&pipe1->commands))){
 					//connect out end of pipe to stdout
-					close(fd1[1]);
-					close(fd1[0]);
-					printf("not first");
-				}
-				//piped and not the first element or last
-				if (piped && (list_next(e) != list_tail(&(pipe1->commands)))){
-					fd1[1] = fd2[1];
-					fd1[0] = fd2[0];
+					int* fd = pipeArray[0];			
+					close(fd[1]);
 					
 				}
 				//piped and the last element
-				if(piped && (list_next(e) == list_tail(&(pipe1->commands)))){
-					close(fd1[1]);
+				else if(piped && (list_next(e) == list_tail(&pipe1->commands))){
+					int index = cmdCounter - 1;
+					int* fd = pipeArray[index];
+					close(fd[0]);
+				}
+				else if (piped){
+					int index = cmdCounter - 1;
+					int* fd1 = pipeArray[index];
+					int* fd2 = pipeArray[cmdCounter];
 					close(fd1[0]);
 					close(fd2[1]);
-					close(fd2[0]);
-					printf("last\n");
 				}
 				
 				cmdCounter++;
-				printf("command counter\n");
 
 				//add new job to jobs list
 				if (!pipe1->bg_job && start){
@@ -401,7 +411,6 @@ main(int ac, char *av[])
 					start = false;
 					initializeJob(pipe1, pid, BACKGROUND);
 				}
-				list_remove(&(pipe1->elem));
 				
 				//initialize child process pid
 				//printf("child pid: %d\n", pid);			
@@ -415,7 +424,7 @@ main(int ac, char *av[])
 		
 				//block signal when adding
 				esh_signal_block(SIGCHLD);
-				list_push_back(&jobs_list, &(pipe1->elem));
+				list_push_back(&jobs_list, element1);
 				esh_signal_unblock(SIGCHLD);
 				pipe1->jid = list_size(&(jobs_list));
 
@@ -435,11 +444,10 @@ main(int ac, char *av[])
 				else{
 					printf("[%d] %d\n", pipe1->jid, pid);
 				}
-				//increment command counter
 				
 			}
-		
 		}
+	    }
 	}
 
 		esh_command_line_free(cline);
