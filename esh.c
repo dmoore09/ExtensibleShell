@@ -228,7 +228,7 @@ main(int ac, char *av[])
 	//number of pipes needed
 	int pipeNum = (list_size(&pipe1->commands) - 1);
 	int* pipeArray[pipeNum];
-	//int* pipeArray[pipeNum];
+
 	if (list_size(&pipe1->commands) > 1){
 		piped = true;
 		//create an array of pipe s
@@ -237,12 +237,6 @@ main(int ac, char *av[])
                		int fd[2];
 			pipeArray[i] = fd;
 			pipe(fd);
-
-			//TODO error checking
-               		//if(pipeArray[i] != 0){
-                       	//	fprintf(stderr, "Piping Failed");
-                       	//	continue;
-               		//}
        		}	
 	}
 	
@@ -326,24 +320,25 @@ main(int ac, char *av[])
 					setpgid(pid, pipe1->pgrp);
 				}
 				
-				//io redirection input
+				//io redirection output
 				if (firstCommand->iored_output){
+					printf("in here\n");
 					int newOut;
 					//append
 					if (firstCommand->append_to_output){
-						newOut = open(firstCommand->iored_output, O_APPEND | O_WRONLY | O_CREAT | 								S_IRWXU);	
+						newOut = open(firstCommand->iored_output, O_WRONLY|O_CREAT|O_TRUNC, 0600);	
 					}
 					//dont append
 					else{
-						newOut = open(firstCommand->iored_output, O_WRONLY | O_CREAT | S_IRWXU);	
+						newOut = open(firstCommand->iored_output, O_RDWR|O_CREAT|O_APPEND, 0600);	
 					}
-					dup2(newOut, 1);
+					dup2(newOut, fileno(stdout));
 					close(newOut);
 				}
-				//io redirection output
+				//io redirection input
 				if (firstCommand->iored_input){
-					int newIn = open(firstCommand->iored_output, O_WRONLY | S_IRWXU);
-					dup2(newIn, 0);
+					int newIn = open(firstCommand->iored_input, O_WRONLY | S_IRWXU);
+					dup2(newIn, fileno(stdin));
 					close(newIn);
 				}
 				
@@ -351,37 +346,41 @@ main(int ac, char *av[])
 				//piped and the first element
 				if(piped && cmdCounter == 0){
 					int* fd = pipeArray[0];
+					printf("first element\n");
 					//connect out end of pipe to stdout
 					dup2(fd[1], 1);
-					close(fd[1]);
-					close(fd[0]);
 				}
 				//piped and the last element
 				else if(piped && cmdCounter == pipeNum){
 					
 					int index = cmdCounter/2;
-					printf("index: %d", index);
+					//printf("cmd: %d", cmdCounter);
 					printf("last element\n");
 					int* fd = pipeArray[index];
 					dup2(fd[0], 0);
-					close(fd[0]);
-					close(fd[1]);
 				}
 				//piped and not the first element or last
 				else if (piped){
 				        //get right index in array
 					int index = cmdCounter/2;
-					//printf("index: %d, +1: %d, pipe#: %d\n", index, index + 1, pipeNum);
+					printf("index: %d, +1: %d, pipe#: %d\n", index, index + 1, pipeNum);
 					int* fd = pipeArray[index];
 					int* fd2 = pipeArray[index + 1];
 					//read from index
 					dup2(fd[0], 0);
 					//output to next pipe
 					dup2(fd2[1], 1);
-					close(fd[0]);
-					close(fd[1]);
-					close(fd2[1]);
-					close(fd2[0]);
+				}
+				
+				//close all file descriptors
+				if (piped){
+					
+					int i;
+					for (i = 0; i < pipeNum; i++){
+						int* fd = pipeArray[i];
+						close(fd[0]);
+						close(fd[1]);
+					}
 				}
 				
 				int ret = 0;
@@ -396,29 +395,41 @@ main(int ac, char *av[])
 
 				//close pipes
 				//piped and the first element
-				if(piped && cmdCounter == 0){
-					int* fd = pipeArray[0];
-					close(fd[1]);
-				}
+				//if(piped && cmdCounter == 0){
+				//	int* fd = pipeArray[0];
+				//	close(fd[1]);
+				//}
 				//piped and the last element
-				else if(piped && cmdCounter == pipeNum){
-					int index = cmdCounter/2;
-					int* fd = pipeArray[index];
-					close(fd[0]);
-					close(fd[1]);
-				}
+				//else if(piped && cmdCounter == pipeNum){
+				//	printf("blah2\n");
+				//	int index = cmdCounter/2;
+				//	int* fd = pipeArray[index];
+				//	close(fd[0]);
+				//}
 				//piped and not the first element or last
-				else if (piped){
-				        //get right index in array
-					int index = cmdCounter/2;
-					int* fd = pipeArray[index];
-					int* fd2 = pipeArray[index + 1];
-					close(fd[0]);
-					close(fd2[1]);
-					close(fd[1]);
-					//close(fd2[0]);
-				}			
+				//else if (piped){
+				//        //get right index in array
+				//	int index = cmdCounter/2;
+				//	printf("blah\n");
+				//	int* fd = pipeArray[index];
+				//	int* fd2 = pipeArray[index + 1];
+				//	close(fd[0]);
+				//	close(fd2[1]);
+				//}
+				
+				//close all file descriptors
+				if (piped && (cmdCounter == pipeNum)){
+					printf("closing this shit\n");
+					int i;
+					for (i = 0; i < pipeNum; i++){
+						int* fd = pipeArray[i];
+						close(fd[0]);
+						close(fd[1]);
+					}
+				}
+
 				cmdCounter++;
+					
 
 				//add new job to jobs list
 				if (!pipe1->bg_job && start){
@@ -429,7 +440,6 @@ main(int ac, char *av[])
 					start = false;
 					initializeJob(pipe1, pid, BACKGROUND);
 				}
-				pipe1->name = firstCommand->argv[0];
 				list_remove(&(pipe1->elem));
 				
 				//initialize child process pid
