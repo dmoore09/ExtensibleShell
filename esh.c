@@ -227,17 +227,11 @@ main(int ac, char *av[])
 	int cmdCounter = 0;
 	//number of pipes needed
 	int pipeNum = (list_size(&pipe1->commands) - 1);
-	int* pipeArray[pipeNum];
-
-	if (list_size(&pipe1->commands) > 1){
+	int fd1[2];
+	int fd2[2];
+	if (pipeNum > 1){
 		piped = true;
 		//create an array of pipe s
-		int i;
-		for(i = 0; i < pipeNum; i++){
-               		int fd[2];
-			pipeArray[i] = fd;
-			pipe(fd);
-       		}	
 	}
 	
 	//loop through all commands in pipeline
@@ -246,6 +240,11 @@ main(int ac, char *av[])
 		
 		//get the first command
 		struct esh_command *firstCommand = list_entry(e, struct esh_command, elem);
+
+		if (piped && (cmdCounter != pipeNum)){
+			pipe(fd1);
+			pipe(fd2);
+		}
 
 		//check for plugins
 		if (checkPlugin(firstCommand)){
@@ -344,43 +343,17 @@ main(int ac, char *av[])
 				
 				//printf("comdCounter: %d\n", cmdCounter);			
 				//piped and the first element
-				if(piped && cmdCounter == 0){
-					int* fd = pipeArray[0];
-					printf("first element\n");
+				if(piped && cmdCounter != 0){
 					//connect out end of pipe to stdout
-					dup2(fd[1], 1);
+					close(fd1[1]);					
+					dup2(fd1[0], 0);
+					close(fd1[0]);
 				}
 				//piped and the last element
-				else if(piped && cmdCounter == pipeNum){
-					
-					int index = cmdCounter/2;
-					//printf("cmd: %d", cmdCounter);
-					printf("last element\n");
-					int* fd = pipeArray[index];
-					dup2(fd[0], 0);
-				}
-				//piped and not the first element or last
-				else if (piped){
-				        //get right index in array
-					int index = cmdCounter/2;
-					printf("index: %d, +1: %d, pipe#: %d\n", index, index + 1, pipeNum);
-					int* fd = pipeArray[index];
-					int* fd2 = pipeArray[index + 1];
-					//read from index
-					dup2(fd[0], 0);
-					//output to next pipe
+				else if(piped && cmdCounter != pipeNum){
+					close(fd2[0]);
 					dup2(fd2[1], 1);
-				}
-				
-				//close all file descriptors
-				if (piped){
-					
-					int i;
-					for (i = 0; i < pipeNum; i++){
-						int* fd = pipeArray[i];
-						close(fd[0]);
-						close(fd[1]);
-					}
+					close(fd2[1]);
 				}
 				
 				int ret = 0;
@@ -391,43 +364,25 @@ main(int ac, char *av[])
 				}
 			}
 			//in the parent
-			else {
-
-				//close pipes
+			else {			
 				//piped and the first element
-				//if(piped && cmdCounter == 0){
-				//	int* fd = pipeArray[0];
-				//	close(fd[1]);
-				//}
-				//piped and the last element
-				//else if(piped && cmdCounter == pipeNum){
-				//	printf("blah2\n");
-				//	int index = cmdCounter/2;
-				//	int* fd = pipeArray[index];
-				//	close(fd[0]);
-				//}
-				//piped and not the first element or last
-				//else if (piped){
-				//        //get right index in array
-				//	int index = cmdCounter/2;
-				//	printf("blah\n");
-				//	int* fd = pipeArray[index];
-				//	int* fd2 = pipeArray[index + 1];
-				//	close(fd[0]);
-				//	close(fd2[1]);
-				//}
-				
-				//close all file descriptors
-				if (piped && (cmdCounter == pipeNum)){
-					printf("closing this shit\n");
-					int i;
-					for (i = 0; i < pipeNum; i++){
-						int* fd = pipeArray[i];
-						close(fd[0]);
-						close(fd[1]);
-					}
+				if(piped && cmdCounter != 0){
+					//connect out end of pipe to stdout
+					close(fd1[1]);
+					close(fd1[0]);
 				}
-
+				//piped and the last element
+				if(piped && cmdCounter == pipeNum){
+					close(fd1[1]);
+					close(fd1[0]);
+					close(fd2[1]);
+					close(fd2[0]);
+				}
+				//piped and not the first element or last
+				if (piped && (cmdCounter != pipeNum)){
+					fd1[1] = fd2[1];
+					fd1[0] = fd2[0];
+				}
 				cmdCounter++;
 					
 
