@@ -226,7 +226,7 @@ main(int ac, char *av[])
 	bool piped = false;
 	int cmdCounter = 0;
 	//number of pipes needed
-	int pipeNum = (list_size(&pipe1->commands) - 1);
+	int pipeNum = (list_size(&pipe1->commands));
 	int fd1[2];
 	int fd2[2];
 	if (pipeNum > 1){
@@ -241,7 +241,7 @@ main(int ac, char *av[])
 		//get the first command
 		struct esh_command *firstCommand = list_entry(e, struct esh_command, elem);
 
-		if (piped && (cmdCounter != pipeNum)){
+		if (piped && (list_next(e) != list_tail(&(pipe1->commands)))){
 			pipe(fd1);
 			pipe(fd2);
 		}
@@ -325,35 +325,37 @@ main(int ac, char *av[])
 					int newOut;
 					//append
 					if (firstCommand->append_to_output){
-						newOut = open(firstCommand->iored_output, O_WRONLY|O_CREAT|O_TRUNC, 0600);	
+						newOut = open(firstCommand->iored_output, O_WRONLY|O_CREAT| O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);	
 					}
 					//dont append
 					else{
-						newOut = open(firstCommand->iored_output, O_RDWR|O_CREAT|O_APPEND, 0600);	
+						newOut = open(firstCommand->iored_output, O_RDWR|O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);	
 					}
 					dup2(newOut, fileno(stdout));
 					close(newOut);
 				}
 				//io redirection input
 				if (firstCommand->iored_input){
-					int newIn = open(firstCommand->iored_input, O_WRONLY | S_IRWXU);
+					int newIn = open(firstCommand->iored_input, O_RDONLY);
 					dup2(newIn, fileno(stdin));
 					close(newIn);
 				}
 				
 				//printf("comdCounter: %d\n", cmdCounter);			
 				//piped and the first element
-				if(piped && cmdCounter != 0){
+				if(piped && (e != list_begin(&pipe1->commands))){
 					//connect out end of pipe to stdout
 					close(fd1[1]);					
 					dup2(fd1[0], 0);
 					close(fd1[0]);
+					printf("not first\n");
 				}
 				//piped and the last element
-				else if(piped && cmdCounter != pipeNum){
+				else if(piped && (list_next(e) != list_tail(&(pipe1->commands)))){
 					close(fd2[0]);
 					dup2(fd2[1], 1);
 					close(fd2[1]);
+					printf("not last\n");
 				}
 				
 				int ret = 0;
@@ -366,25 +368,29 @@ main(int ac, char *av[])
 			//in the parent
 			else {			
 				//piped and the first element
-				if(piped && cmdCounter != 0){
+				if(piped && (e != list_begin(&(pipe1->commands)))){
 					//connect out end of pipe to stdout
 					close(fd1[1]);
 					close(fd1[0]);
+					printf("not first");
+				}
+				//piped and not the first element or last
+				if (piped && (list_next(e) != list_tail(&(pipe1->commands)))){
+					fd1[1] = fd2[1];
+					fd1[0] = fd2[0];
+					
 				}
 				//piped and the last element
-				if(piped && cmdCounter == pipeNum){
+				if(piped && (list_next(e) == list_tail(&(pipe1->commands)))){
 					close(fd1[1]);
 					close(fd1[0]);
 					close(fd2[1]);
 					close(fd2[0]);
+					printf("last\n");
 				}
-				//piped and not the first element or last
-				if (piped && (cmdCounter != pipeNum)){
-					fd1[1] = fd2[1];
-					fd1[0] = fd2[0];
-				}
+				
 				cmdCounter++;
-					
+				printf("command counter\n");
 
 				//add new job to jobs list
 				if (!pipe1->bg_job && start){
