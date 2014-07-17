@@ -1,3 +1,5 @@
 
-This directory contains skeleton files for the 'esh' project.
+Project 1 for CS 3214 at Virginia Tech. Extensible Shell is a Linux Shell able to start/stop/kill jobs. 
+Also supports a few basic linux commands. The shell allows for developers to create their own plugins for the shell.
+Feel free to pull for your own reference/contribute
 
